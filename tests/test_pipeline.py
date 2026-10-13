@@ -143,3 +143,50 @@ def test_sample_file_is_marked_sample_and_valid():
     validate(data)
     assert data["meta"]["mode"] == "sample"
     assert all(n["title"].startswith("[샘플]") for n in data["notices"])
+
+
+def test_full_raw_kept_and_display_clipped(tmp_path):
+    """화면용 필드는 600자에서 줄이되, 원본 응답 전체는 DB에 보관하고 금액 판정도 전체 원문으로 한다."""
+    from collector.sources.gov24 import Gov24
+    from tests.fakes import gov24_http, gov24_row
+    long = "가" * 700 + " 월 최대 30만 원 지급"      # 금액이 600자 뒤에 있음
+    it = Gov24(service_key="K", http=gov24_http([gov24_row(지원내용=long)])).fetch().items[0]
+    st = Store(tmp_path / "t.db")
+    st.upsert(it, "2026-10-13", __import__("collector.models", fromlist=["now_kst"]).now_kst())
+    rec = st.all_records()[0]
+    assert len(rec["benefit_text"]) < len(long) and "benefit_text" in rec["flags"]["clipped_fields"]
+    assert rec["amount_text"] == "월 최대 30만 원"                     # 잘린 부분의 금액도 찾음
+    assert st.raw_of(rec["id"])["list"]["지원내용"] == long             # 원문 전체 보관
+    assert "조회수" not in st.raw_of(rec["id"])["list"]
+
+
+def test_first_raw_storage_is_migration_not_official_change(tmp_path):
+    """기존 행(원본 요약값은 있으나 원본 미보관)에 원본을 처음 보관 → '원문 보완(데이터 이전)', 공고 변경 아님."""
+    from collector.models import now_kst
+    st = Store(tmp_path / "t.db")
+    base = {"category": "생활비", "title": "T", "benefit_text": "월 10만 원"}
+    st.upsert(Item("a", "TEST-a", "1", None, None, base, source_digest="d1"), "2026-10-13", now_kst())   # 옛 방식: 원본 없음
+    r = st.upsert(Item("a", "TEST-a", "1", None, None, base, source_digest="d1", raw={"TEST": 1}), "2026-10-14", now_kst())
+    rec = st.all_records()[0]
+    assert r == "same" and st.last_backfilled
+    assert rec["last_changed_at"] is None and "review_reset_at" not in rec["flags"]
+    assert rec["history"][0]["note"] == "원문 보완(데이터 이전)"
+    # 다음 날 같은 원본 → 아무 기록도 추가되지 않음
+    r = st.upsert(Item("a", "TEST-a", "1", None, None, base, source_digest="d1", raw={"TEST": 1}), "2026-10-15", now_kst())
+    assert r == "same" and not st.last_backfilled and len(st.all_records()[0]["history"]) == 2
+
+
+def test_digest_method_change_is_migration(tmp_path):
+    from collector.models import now_kst
+    st = Store(tmp_path / "t.db")
+    base = {"category": "생활비", "title": "T", "benefit_text": "월 10만 원"}
+    st.upsert(Item("a", "TEST-a", "1", None, None, base, source_digest="d1", raw={"v": 1}), "2026-10-13", now_kst())
+    r = st.upsert(Item("a", "TEST-a", "1", None, None, {**base, "period_kind": "상시"}, source_digest="NEW",
+                       raw={"v": 1}, digest_version=2), "2026-10-14", now_kst())
+    rec = st.all_records()[0]
+    assert r == "reclassified" and rec["last_changed_at"] is None
+    assert rec["history"][0]["note"] == "원문 보완(데이터 이전) · 분류 규칙 변경"
+    # 데이터 이전 중이라도 화면용 원문 필드가 바뀌면 공고 변경으로 기록
+    r = st.upsert(Item("a", "TEST-a", "1", None, None, {**base, "benefit_text": "월 20만 원"}, source_digest="NEW2",
+                       raw={"v": 2}, digest_version=3), "2026-10-15", now_kst())
+    assert r == "changed"

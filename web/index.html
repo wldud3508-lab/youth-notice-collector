@@ -593,7 +593,7 @@ function renderDetail(){
     return `<div class="link-row"><span class="lk">${esc(r.type)}</span>${link}${r.note?`<span class="note">${esc(r.note)}</span>`:""}</div>`;
   }).join("");
 
-  const hist = (n.history||[]).map(h => `<li><div class="tl-head mono">${esc(fmtTime(h.at)||"")} · ${esc(h.batch||"")}</div><div>${h.note==="분류 규칙 변경"?`<span class="tag t-plain">분류 규칙 변경</span> 공고 원문은 그대로이고 정리 규칙만 바뀌었습니다`:esc(h.note||"")}</div>${(h.changes||[]).map(c=>`<div class="diff"><b>${esc(LABELS[c.field]||c.field)}</b>: <del>${esc(c.before ?? "없음")}</del> → <ins>${esc(c.after ?? "없음")}</ins></div>`).join("")}</li>`).join("");
+  const hist = (n.history||[]).map(h => `<li><div class="tl-head mono">${esc(fmtTime(h.at)||"")} · ${esc(h.batch||"")}</div><div>${/^(분류 규칙 변경|원문 보완)/.test(h.note||"")?`<span class="tag t-plain">${esc(h.note)}</span> 공고 원문 변경이 아닙니다${/원문 보완/.test(h.note)?" — 원본 응답 전체를 DB에 처음 보관했습니다":" — 정리 규칙만 바뀌었습니다"}`:esc(h.note||"")}</div>${(h.changes||[]).map(c=>`<div class="diff"><b>${esc(LABELS[c.field]||c.field)}</b>: <del>${esc(c.before ?? "없음")}</del> → <ins>${esc(c.after ?? "없음")}</ins></div>`).join("")}</li>`).join("");
 
   el.innerHTML = `<div class="detail-inner">
     <div>
@@ -621,7 +621,7 @@ function renderDetail(){
     ${alerts.join("")}
 
     <div><h3 class="sec">지원대상·자격</h3><table class="fields"><tbody>
-      <tr><th scope="row">지원대상 원문</th><td>${n.target_text?`<div class="quote">${esc(n.target_text)}</div>`:nullCell(n,"target_text")}</td></tr>
+      <tr><th scope="row">지원대상 원문</th><td>${n.target_text?`<div class="quote">${esc(n.target_text)}</div>`:nullCell(n,"target_text")}${((n.flags||{}).clipped_fields||[]).length?`<div class="note">화면용으로 줄인 항목이 있습니다(${esc(n.flags.clipped_fields.map(f=>LABELS[f]||f).join(", "))}). 금액·자격 판정은 원문 전체로 했고, 원문 전체는 수집 DB에 보관됩니다.</div>`:""}</td></tr>
       ${fieldRow(n,"youth_relevant","대학생·청년 관련", n.youth_relevant===null?nullCell(n,"youth_relevant"):(n.youth_relevant?"관련 있음":"관련 없음") + (n.youth_basis?`<div class="note">근거: ${esc(n.youth_basis)}</div>`:""))}
       ${fieldRow(n,"age_condition")}
       ${fieldRow(n,"region_condition")}

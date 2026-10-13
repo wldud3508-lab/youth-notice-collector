@@ -77,6 +77,7 @@ def build_sources(store: Store, sources, batch_id: str, include_manual: bool) ->
                 "new": r["new"] if ok else None,
                 "changed": r["changed"] if ok else None,
                 "reclassified": r["reclassified"] if ok else None,
+                "raw_backfilled": r["raw_backfilled"] if ok else None,
                 "error": (r["error"] or None) if r is not None and not ok else None,
                 "last_success_at": store.last_success(info.key),
                 "attempts": len(store.attempts(batch_id, info.key)),
@@ -189,13 +190,13 @@ def summary_md(data: dict) -> str:
                  f"{k} {v}건" for k, v in m.get("review_summary", {}).items() if not k.startswith("기간 유형")),
              "- 신청기간 유형: " + " · ".join(
                  f"{k[7:]} {v}건" for k, v in m.get("review_summary", {}).items() if k.startswith("기간 유형")),
-             "", "| 출처 | 상태 | 수집 | 신규 | 공고 변경 | 분류 규칙 변경 | 오류 | 마지막 성공 |",
-             "|---|---|---:|---:|---:|---:|---|---|"]
+             "", "| 출처 | 상태 | 수집 | 신규 | 공고 변경 | 분류 규칙 변경 | 원문 보완(데이터 이전) | 오류 | 마지막 성공 |",
+             "|---|---|---:|---:|---:|---:|---:|---|---|"]
     for s in data["sources"]:
         r = s["run"]
         na = "집계 안 됨"
         f = lambda k: r.get(k) if r.get(k) is not None else na
-        lines.append(f"| {s['name']} | {r['status']} | {f('collected')} | {f('new')} | {f('changed')} | {f('reclassified')} | "
+        lines.append(f"| {s['name']} | {r['status']} | {f('collected')} | {f('new')} | {f('changed')} | {f('reclassified')} | {f('raw_backfilled')} | "
                      f"{(r['error'] or '').replace('|', '/')} | {r['last_success_at'] or '없음'} |")
     if m["batch_status"] == "실패":
         lines += ["", "> 성공한 출처가 없습니다. 정상 완료가 아닙니다."]

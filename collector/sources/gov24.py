@@ -24,13 +24,14 @@ from .base import FetchResult, Source, SourceInfo, SourceUnavailable, Unexpected
 API = "https://api.odcloud.kr/api/gov24/v3"
 PER_PAGE = 1000
 MAX_PAGES = 40
-CLIP = 600
+CLIP = 600   # 화면용 길이. 바꾸면 기존 저장값과 비교가 어긋나므로 유지
+CLIP_MARK = " …(이하 생략, 원문 링크 참고)"
 
 
 def _clip(s: str | None) -> str | None:
     s = T.clean(s)
     if s and len(s) > CLIP:
-        return s[:CLIP].rstrip() + " …(이하 생략, 원문 링크 참고)"
+        return s[:CLIP].rstrip() + CLIP_MARK
     return s
 
 
@@ -219,14 +220,26 @@ class Gov24(Source):
         ev["category"] = cat_basis or ""
         site_cat = " / ".join(x for x in (g("서비스분야"), g("지원유형")) if x) or None
         url = g("상세조회URL")   # 없으면 주소를 추측해 만들지 않는다
-        item = Item("gov24", "정부24", sid, url, site_cat, fields, ev, need, source_digest=_digest(row, detail, cond))
-        item.conflicts = conflicts
+        # 화면용 필드만 잘라 쓰고, 금액·자격 판정은 위에서 원문 전체로 했다. 원문 전체는 raw 로 DB에 보관.
+        clipped = [k for k in ("target_text", "benefit_text", "apply_method", "required_docs")
+                   if isinstance(fields.get(k), str) and fields[k].endswith(CLIP_MARK)]
+        raw = _raw(row, detail, cond)
+        item = Item("gov24", "정부24", sid, url, site_cat, fields, ev, need, source_digest=_digest(raw),
+                    conflicts=conflicts, raw=raw, digest_version=DIGEST_VERSION,
+                    flags={"clipped_fields": clipped} if clipped else {})
         return item, ""
 
 
-def _digest(row, detail, cond) -> str:
-    """출처 원본 응답의 해시. 매일 바뀌는 조회수는 제외. 이 값이 같으면 공고 원문은 바뀌지 않은 것."""
+DIGEST_VERSION = 1   # 아래 계산 방식을 바꾸면 올릴 것(올리면 다음 실행은 '데이터 이전'으로 처리돼 공고 변경으로 오인하지 않음)
+
+
+def _raw(row, detail, cond) -> dict:
+    """원본 응답 전체(목록·상세·지원조건). 매일 바뀌는 조회수만 제외."""
+    return {"list": {k: v for k, v in (row or {}).items() if k != "조회수"}, "detail": detail or {}, "cond": cond or {}}
+
+
+def _digest(raw: dict) -> str:
+    """원본 요약값. 이 값이 같으면 공고 원문은 바뀌지 않은 것."""
     import hashlib
     import json
-    body = {"list": {k: v for k, v in (row or {}).items() if k != "조회수"}, "detail": detail or {}, "cond": cond or {}}
-    return hashlib.sha256(json.dumps(body, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:20]
+    return hashlib.sha256(json.dumps(raw, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:20]

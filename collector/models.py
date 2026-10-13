@@ -76,6 +76,9 @@ class Item:
     needs_review: list = field(default_factory=list)
     source_digest: str | None = None   # 출처 원본 응답(조회수 등 제외)의 해시
     conflicts: list = field(default_factory=list)   # 같은 출처 안에서 원문끼리 충돌(예: 원문 연령 ↔ 지원조건 코드)
+    raw: dict | None = None            # 출처 원본 응답 전체(자르지 않음) — DB의 raw_sources 에 보관
+    digest_version: int = 1            # 원본 요약값 계산 방식 버전. 바뀌면 '데이터 이전'으로 처리
+    flags: dict = field(default_factory=dict)
 
     def to_record(self) -> dict:
         rec = copy.deepcopy(BASE)
@@ -96,8 +99,9 @@ class Item:
         rec["evidence"] = {k: v for k, v in self.evidence.items() if v}
         rec["needs_review_fields"] = sorted(set(self.needs_review))
         rec["conflicts"] = [c for c in self.conflicts if c]
+        rec["flags"] = {**rec.get("flags", {}), **self.flags}
         if self.source_digest:
-            rec["flags"] = {**rec.get("flags", {}), "source_digest": self.source_digest}
+            rec["flags"].update(source_digest=self.source_digest, digest_version=self.digest_version)
         return rec
 
 

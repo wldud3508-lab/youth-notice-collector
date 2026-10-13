@@ -56,6 +56,7 @@
             "new": { "type": ["integer", "null"], "minimum": 0 },
             "changed": { "type": ["integer", "null"], "minimum": 0, "description": "출처 원문이 바뀐 공고 수" },
             "reclassified": { "type": ["integer", "null"], "minimum": 0, "description": "원문은 같고 분류 규칙 변경으로 결과만 바뀐 공고 수" },
+            "raw_backfilled": { "type": ["integer", "null"], "minimum": 0, "description": "기존 공고의 원본 전체를 처음 보관(데이터 이전)한 수. 공고 변경 아님" },
             "error": { "$ref": "#/$defs/nstr" },
             "last_success_at": { "$ref": "#/$defs/datetime" },
             "attempts": { "type": ["integer", "null"], "minimum": 0 },
