@@ -1,0 +1,1608 @@
+{
+ "meta": {
+  "mode": "sample",
+  "schema_version": "0.1",
+  "batch_id": "SAMPLE-20261013",
+  "reference_date": "2026-10-13",
+  "generated_at": "2026-10-13T09:05:00+09:00"
+ },
+ "sources": [
+  {
+   "key": "linkareer",
+   "name": "링커리어",
+   "categories": [
+    "공모전"
+   ],
+   "connection": "미연결 · 출처 조사 전",
+   "run": {
+    "status": "성공",
+    "collected": 38,
+    "new": 1,
+    "changed": 1,
+    "error": null,
+    "last_success_at": "2026-10-13T09:02:00+09:00"
+   }
+  },
+  {
+   "key": "wevity",
+   "name": "위비티",
+   "categories": [
+    "공모전"
+   ],
+   "connection": "미연결 · 출처 조사 전",
+   "run": {
+    "status": "실패",
+    "collected": null,
+    "new": null,
+    "changed": null,
+    "error": "목록 페이지 응답 시간 초과 (3회 재시도 후 실패) — 오류 표시 예시",
+    "last_success_at": "2026-10-12T09:03:00+09:00"
+   }
+  },
+  {
+   "key": "kosaf",
+   "name": "한국장학재단",
+   "categories": [
+    "장학금"
+   ],
+   "connection": "미연결 · 출처 조사 전",
+   "run": {
+    "status": "성공",
+    "collected": 12,
+    "new": 1,
+    "changed": 0,
+    "error": null,
+    "last_success_at": "2026-10-13T09:03:00+09:00"
+   }
+  },
+  {
+   "key": "campuscolor",
+   "name": "캠퍼스칼라",
+   "categories": [
+    "장학금"
+   ],
+   "connection": "연결 보류 · 운영 사이트 식별 확인 필요",
+   "run": {
+    "status": "연결 보류",
+    "collected": null,
+    "new": null,
+    "changed": null,
+    "error": "운영 사이트와 장학금 게시판을 사용자 확인 전까지 수집하지 않음 (수동 입력 1건)",
+    "last_success_at": null
+   }
+  },
+  {
+   "key": "youthcenter",
+   "name": "온통청년",
+   "categories": [
+    "생활비",
+    "주거비"
+   ],
+   "connection": "미연결 · 출처 조사 전",
+   "run": {
+    "status": "성공",
+    "collected": 57,
+    "new": 1,
+    "changed": 2,
+    "error": null,
+    "last_success_at": "2026-10-13T09:04:00+09:00"
+   }
+  },
+  {
+   "key": "gov24",
+   "name": "정부24",
+   "categories": [
+    "생활비",
+    "주거비"
+   ],
+   "connection": "미연결 · 출처 조사 전",
+   "run": {
+    "status": "성공",
+    "collected": 21,
+    "new": 0,
+    "changed": 1,
+    "error": null,
+    "last_success_at": "2026-10-13T09:05:00+09:00"
+   }
+  }
+ ],
+ "notices": [
+  {
+   "id": "N-0001",
+   "category": "공모전",
+   "title": "[샘플] 2026 청년 로컬브랜드 아이디어 공모전",
+   "organizer": "예시문화재단(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "링커리어",
+     "source_id": "LK-S-1101",
+     "url": "sample://링커리어/LK-S-1101",
+     "site_category": "공모전 > 기획/아이디어"
+    }
+   ],
+   "target_text": "전국 대학(원)생 및 만 19~34세 청년 (개인 또는 3인 이하 팀)",
+   "youth_relevant": true,
+   "youth_basis": "지원대상 원문에 '대학(원)생', '만 19~34세 청년' 명시",
+   "age_condition": "만 19~34세",
+   "region": "전국",
+   "region_condition": "제한 없음",
+   "income_condition": null,
+   "status_condition": "대학(원)생 또는 청년",
+   "benefit_text": "대상 1팀 300만 원, 최우수 2팀 각 150만 원, 우수 5팀 각 50만 원",
+   "support_type": "기타",
+   "amount_text": "총 상금 850만 원",
+   "amount_value": 8500000,
+   "amount_unit": "원",
+   "amount_period": null,
+   "amount_qualifier": "총액",
+   "apply_start": "2026-09-28",
+   "apply_end": "2026-10-20",
+   "apply_end_time": "18:00",
+   "period_text": "2026. 9. 28.(월) ~ 10. 20.(화) 18:00까지",
+   "apply_status_override": null,
+   "apply_method": "주최 측 온라인 접수 페이지",
+   "apply_url": "sample://apply/N-0001",
+   "required_docs": "참가신청서, 기획안(PDF 10쪽 이내)",
+   "exclusions": "타 공모전 수상작 제출 불가",
+   "official_url": "sample://org/N-0001",
+   "attachment_url": "sample://file/N-0001.pdf",
+   "posted_at": "2026-09-25",
+   "first_seen_at": "2026-10-13T09:01:00+09:00",
+   "last_checked_at": "2026-10-13T09:01:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "contest_field": "기획/아이디어",
+    "theme": "지역 고유 자원을 활용한 브랜드 아이디어",
+    "team_type": "개인 또는 팀(3인 이하)",
+    "submission": "기획안 PDF",
+    "prize_text": "대상 300만 원(1팀), 최우수 150만 원(2팀), 우수 50만 원(5팀)"
+   },
+   "evidence": {
+    "apply_end": "접수기간 : 2026. 9. 28.(월) ~ 10. 20.(화) 18:00까지",
+    "age_condition": "참가자격 : 전국 대학(원)생 및 만 19~34세 청년",
+    "amount_text": "시상내역 표 합계 (공고문 4쪽)",
+    "posted_at": "게시일 2026.09.25 — 접수 시작일과 다름"
+   },
+   "history": [
+    {
+     "at": "2026-10-13T09:01:00+09:00",
+     "batch": "SAMPLE-20261013",
+     "note": "최초 수집 (게시 후 18일 지나 발견 — 누락 확인 단계에서 수집)",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0002",
+   "category": "공모전",
+   "title": "[샘플] 대학생 숏폼 영상 공모전",
+   "organizer": "예시콘텐츠진흥원(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "링커리어",
+     "source_id": "LK-S-1088",
+     "url": "sample://링커리어/LK-S-1088",
+     "site_category": "공모전 > 영상/UCC"
+    }
+   ],
+   "target_text": "국내 대학(원) 재학생·휴학생",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '대학(원) 재학생·휴학생' 명시",
+   "age_condition": null,
+   "region": "전국",
+   "region_condition": "제한 없음",
+   "income_condition": null,
+   "status_condition": "재학생·휴학생",
+   "benefit_text": "대상 200만 원, 최우수 100만 원 외",
+   "support_type": "기타",
+   "amount_text": "총 상금 500만 원",
+   "amount_value": 5000000,
+   "amount_unit": "원",
+   "amount_period": null,
+   "amount_qualifier": "총액",
+   "apply_start": "2026-10-01",
+   "apply_end": "2026-10-15",
+   "apply_end_time": "23:59",
+   "period_text": "10. 1.(목) ~ 10. 15.(목) 23:59 (기간 연장)",
+   "apply_status_override": null,
+   "apply_method": "이메일 접수",
+   "apply_url": null,
+   "required_docs": "영상 파일(60초 이내), 참가신청서",
+   "exclusions": null,
+   "official_url": "sample://org/N-0002",
+   "attachment_url": null,
+   "posted_at": "2026-09-29",
+   "first_seen_at": "2026-10-02T09:01:00+09:00",
+   "last_checked_at": "2026-10-13T09:02:00+09:00",
+   "last_changed_at": "2026-10-13T09:02:00+09:00",
+   "changed_fields": [
+    "apply_end",
+    "period_text"
+   ],
+   "needs_review_fields": [],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "contest_field": "영상/UCC",
+    "theme": "캠퍼스 생활 속 안전",
+    "team_type": "개인",
+    "submission": "60초 이내 세로형 영상",
+    "prize_text": "대상 200만 원, 최우수 100만 원, 우수 50만 원(4명)"
+   },
+   "evidence": {
+    "apply_end": "[공지] 접수 기간이 10월 15일(목) 23:59까지 연장되었습니다."
+   },
+   "history": [
+    {
+     "at": "2026-10-13T09:02:00+09:00",
+     "batch": "SAMPLE-20261013",
+     "note": "마감 연장 공지 반영",
+     "changes": [
+      {
+       "field": "apply_end",
+       "before": "2026-10-10",
+       "after": "2026-10-15"
+      },
+      {
+       "field": "period_text",
+       "before": "10. 1.(목) ~ 10. 10.(토) 23:59",
+       "after": "10. 1.(목) ~ 10. 15.(목) 23:59 (기간 연장)"
+      }
+     ]
+    },
+    {
+     "at": "2026-10-02T09:01:00+09:00",
+     "batch": "SAMPLE-20261002",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0003",
+   "category": "공모전",
+   "title": "[샘플] 2026 청년 정책 제안 공모전",
+   "organizer": "예시시 청년정책과(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "링커리어",
+     "source_id": "LK-S-1120",
+     "url": "sample://링커리어/LK-S-1120",
+     "site_category": "공모전 > 정책/제안"
+    },
+    {
+     "site": "위비티",
+     "source_id": "WV-S-5531",
+     "url": "sample://위비티/WV-S-5531",
+     "site_category": "기획/아이디어"
+    }
+   ],
+   "target_text": "경남 거주 또는 경남 소재 대학 재학 청년(만 19~39세)",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '청년(만 19~39세)' 명시",
+   "age_condition": "만 19~39세",
+   "region": "경남",
+   "region_condition": "경남 거주 또는 경남 소재 대학 재학",
+   "income_condition": null,
+   "status_condition": null,
+   "benefit_text": "우수 제안 10건 시상 및 정책 반영 검토",
+   "support_type": "기타",
+   "amount_text": "건당 30만 원(10건)",
+   "amount_value": 300000,
+   "amount_unit": "원",
+   "amount_period": null,
+   "amount_qualifier": "건당",
+   "apply_start": "2026-10-20",
+   "apply_end": "2026-11-10",
+   "apply_end_time": "18:00",
+   "period_text": "2026. 10. 20. ~ 11. 10. 18:00",
+   "apply_status_override": null,
+   "apply_method": "온라인 제출",
+   "apply_url": "sample://apply/N-0003",
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": "sample://org/N-0003",
+   "attachment_url": null,
+   "posted_at": "2026-10-06",
+   "first_seen_at": "2026-10-07T09:01:00+09:00",
+   "last_checked_at": "2026-10-13T09:02:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [],
+   "review_status": "검토완료",
+   "review_note": null,
+   "extra": {
+    "contest_field": "정책/제안",
+    "theme": "청년 주거·일자리 정책 개선",
+    "team_type": "개인 또는 팀",
+    "submission": "제안서(A4 3쪽 이내)",
+    "prize_text": "우수 10건 각 30만 원"
+   },
+   "evidence": {
+    "apply_start": "접수기간 : 2026. 10. 20.(화) ~ 11. 10.(화) 18:00"
+   },
+   "history": [
+    {
+     "at": "2026-10-08T09:02:00+09:00",
+     "batch": "SAMPLE-20261008",
+     "note": "위비티 게시물 발견 — 동일 공고로 연결",
+     "changes": []
+    },
+    {
+     "at": "2026-10-07T09:01:00+09:00",
+     "batch": "SAMPLE-20261007",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {
+    "merged": "두 출처의 기관명·제목·신청기간·공식 신청 링크가 모두 일치해 연결"
+   }
+  },
+  {
+   "id": "N-0004",
+   "category": "공모전",
+   "title": "[샘플] 대학생 환경 사진 공모전",
+   "organizer": "예시환경연합(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "위비티",
+     "source_id": "WV-S-5590",
+     "url": "sample://위비티/WV-S-5590",
+     "site_category": "사진/영상"
+    }
+   ],
+   "target_text": "대학생",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '대학생' 명시",
+   "age_condition": null,
+   "region": "전국",
+   "region_condition": null,
+   "income_condition": null,
+   "status_condition": null,
+   "benefit_text": null,
+   "support_type": null,
+   "amount_text": null,
+   "amount_value": null,
+   "amount_unit": null,
+   "amount_period": null,
+   "amount_qualifier": null,
+   "apply_start": null,
+   "apply_end": null,
+   "apply_end_time": null,
+   "period_text": "10월 중 접수 예정 (세부 일정 추후 공지)",
+   "apply_status_override": null,
+   "apply_method": null,
+   "apply_url": null,
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": "2026-10-10",
+   "first_seen_at": "2026-10-11T09:02:00+09:00",
+   "last_checked_at": "2026-10-12T09:03:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [
+    "apply_start",
+    "apply_end",
+    "benefit_text"
+   ],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "contest_field": "사진",
+    "theme": "일상 속 기후 변화"
+   },
+   "evidence": {
+    "apply_start": "접수기간 : 10월 중 (추후 공지)"
+   },
+   "history": [
+    {
+     "at": "2026-10-11T09:02:00+09:00",
+     "batch": "SAMPLE-20261011",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0005",
+   "category": "공모전",
+   "title": "[샘플] 제6회 예시 디자인 공모전",
+   "organizer": "예시디자인협회(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "링커리어",
+     "source_id": "LK-S-0712",
+     "url": "sample://링커리어/LK-S-0712",
+     "site_category": "공모전 > 디자인"
+    }
+   ],
+   "target_text": "대학생 및 만 29세 이하 청년",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '대학생', '만 29세 이하' 명시",
+   "age_condition": "만 29세 이하",
+   "region": "전국",
+   "region_condition": null,
+   "income_condition": null,
+   "status_condition": null,
+   "benefit_text": null,
+   "support_type": "기타",
+   "amount_text": "총 상금 1,000만 원",
+   "amount_value": 10000000,
+   "amount_unit": "원",
+   "amount_period": null,
+   "amount_qualifier": "총액",
+   "apply_start": "2025-08-01",
+   "apply_end": "2025-09-15",
+   "apply_end_time": null,
+   "period_text": "2025. 8. 1. ~ 9. 15.",
+   "apply_status_override": null,
+   "apply_method": null,
+   "apply_url": null,
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": "2025-07-20",
+   "first_seen_at": "2025-07-21T09:00:00+09:00",
+   "last_checked_at": "2026-10-13T09:02:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [],
+   "review_status": "검토완료",
+   "review_note": null,
+   "extra": {
+    "contest_field": "디자인",
+    "team_type": "개인",
+    "prize_text": "대상 300만 원 외"
+   },
+   "evidence": {},
+   "history": [
+    {
+     "at": "2025-07-21T09:00:00+09:00",
+     "batch": "SAMPLE-20250721",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [
+    {
+     "type": "다음 회차",
+     "id": "N-0006",
+     "note": "다른 연도·회차라 별개 공고로 유지"
+    }
+   ],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0006",
+   "category": "공모전",
+   "title": "[샘플] 제7회 예시 디자인 공모전",
+   "organizer": "예시디자인협회(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "링커리어",
+     "source_id": "LK-S-1095",
+     "url": "sample://링커리어/LK-S-1095",
+     "site_category": "공모전 > 디자인"
+    }
+   ],
+   "target_text": "대학생 및 만 29세 이하 청년",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '대학생', '만 29세 이하' 명시",
+   "age_condition": "만 29세 이하",
+   "region": "전국",
+   "region_condition": null,
+   "income_condition": null,
+   "status_condition": null,
+   "benefit_text": null,
+   "support_type": "기타",
+   "amount_text": "총 상금 1,200만 원",
+   "amount_value": 12000000,
+   "amount_unit": "원",
+   "amount_period": null,
+   "amount_qualifier": "총액",
+   "apply_start": "2026-10-05",
+   "apply_end": "2026-11-05",
+   "apply_end_time": "17:00",
+   "period_text": "2026. 10. 5. ~ 11. 5. 17:00",
+   "apply_status_override": null,
+   "apply_method": null,
+   "apply_url": "sample://apply/N-0006",
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": "sample://org/N-0006",
+   "attachment_url": null,
+   "posted_at": "2026-09-30",
+   "first_seen_at": "2026-10-01T09:01:00+09:00",
+   "last_checked_at": "2026-10-13T09:02:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [
+    "중복 여부"
+   ],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "contest_field": "디자인",
+    "theme": "지속가능한 일상 도구",
+    "team_type": "개인",
+    "submission": "디자인 시안(A3 2매)",
+    "prize_text": "대상 400만 원 외"
+   },
+   "evidence": {},
+   "history": [
+    {
+     "at": "2026-10-01T09:01:00+09:00",
+     "batch": "SAMPLE-20261001",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [
+    {
+     "type": "이전 회차",
+     "id": "N-0005",
+     "note": "별개 공고로 유지"
+    },
+    {
+     "type": "중복 후보",
+     "id": "N-0007",
+     "note": "제목·기관 유사, 마감일·신청 링크 불일치 — 자동 병합하지 않음"
+    }
+   ],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0007",
+   "category": "공모전",
+   "title": "[샘플] 제7회 예시디자인공모전",
+   "organizer": "예시디자인협회(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "위비티",
+     "source_id": "WV-S-5512",
+     "url": "sample://위비티/WV-S-5512",
+     "site_category": "디자인/캐릭터"
+    }
+   ],
+   "target_text": "대학생, 청년",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '대학생, 청년' 명시",
+   "age_condition": null,
+   "region": "전국",
+   "region_condition": null,
+   "income_condition": null,
+   "status_condition": null,
+   "benefit_text": null,
+   "support_type": null,
+   "amount_text": null,
+   "amount_value": null,
+   "amount_unit": null,
+   "amount_period": null,
+   "amount_qualifier": null,
+   "apply_start": "2026-10-05",
+   "apply_end": "2026-11-04",
+   "apply_end_time": null,
+   "period_text": "10.05 ~ 11.04",
+   "apply_status_override": null,
+   "apply_method": null,
+   "apply_url": "sample://apply/N-0007-other",
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": "2026-10-02",
+   "first_seen_at": "2026-10-03T09:02:00+09:00",
+   "last_checked_at": "2026-10-12T09:03:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [
+    "중복 여부",
+    "apply_end"
+   ],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "contest_field": "디자인"
+   },
+   "evidence": {},
+   "history": [
+    {
+     "at": "2026-10-03T09:02:00+09:00",
+     "batch": "SAMPLE-20261003",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [
+    {
+     "type": "중복 후보",
+     "id": "N-0006",
+     "note": "검토 후 병합 또는 별개 유지 결정 필요"
+    }
+   ],
+   "conflicts": [
+    {
+     "field": "apply_end",
+     "values": [
+      {
+       "site": "링커리어 (N-0006)",
+       "value": "2026-11-05"
+      },
+      {
+       "site": "위비티",
+       "value": "2026-11-04"
+      }
+     ]
+    }
+   ],
+   "flags": {}
+  },
+  {
+   "id": "N-0008",
+   "category": "장학금",
+   "title": "[샘플] 예시 생활비 지원 장학금 2차",
+   "organizer": "예시장학재단(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "한국장학재단",
+     "source_id": "KS-S-2026-77",
+     "url": "sample://한국장학재단/KS-S-2026-77",
+     "site_category": "장학금 > 민간·기관 장학"
+    }
+   ],
+   "target_text": "국내 4년제 대학 2~4학년 재학생 중 학자금 지원구간 8구간 이하",
+   "youth_relevant": true,
+   "youth_basis": "대학 재학생 대상",
+   "age_condition": null,
+   "region": "전국",
+   "region_condition": null,
+   "income_condition": "학자금 지원구간 8구간 이하",
+   "status_condition": "2~4학년 재학생",
+   "benefit_text": "학기당 최대 250만 원 생활비 지원",
+   "support_type": "무상지원",
+   "amount_text": "학기당 최대 250만 원",
+   "amount_value": 2500000,
+   "amount_unit": "원",
+   "amount_period": "학기",
+   "amount_qualifier": "최대",
+   "apply_start": "2026-10-06",
+   "apply_end": "2026-10-27",
+   "apply_end_time": "18:00",
+   "period_text": "2026. 10. 6.(화) ~ 10. 27.(화) 18:00",
+   "apply_status_override": null,
+   "apply_method": "온라인 신청 후 추천서 우편 제출",
+   "apply_url": null,
+   "required_docs": "성적증명서, 추천서, 가족관계증명서",
+   "exclusions": "동일 학기 생활비성 장학금 수혜자는 감액 가능",
+   "official_url": "sample://org/N-0008",
+   "attachment_url": "sample://file/N-0008.hwp",
+   "posted_at": "2026-10-05",
+   "first_seen_at": "2026-10-13T09:03:00+09:00",
+   "last_checked_at": "2026-10-13T09:03:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "sch_kind": "생활비",
+    "pay_amount": "학기당 최대 250만 원",
+    "pay_freq": "1회 (2026년 2학기)",
+    "grade_cond": "직전학기 12학점 이상 이수, 백분위 80점 이상",
+    "year_cond": "2~4학년",
+    "income_cond": "학자금 지원구간 8구간 이하",
+    "dup_allowed": "생활비성 장학금과 중복 시 감액 가능 (세부 기준은 공고문 확인)"
+   },
+   "evidence": {
+    "amount_text": "지원금액 : 학기당 최대 250만원 (예산 범위 내 차등 지급)",
+    "income_condition": "신청자격 : 학자금 지원구간 8구간 이하인 자"
+   },
+   "history": [
+    {
+     "at": "2026-10-13T09:03:00+09:00",
+     "batch": "SAMPLE-20261013",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0009",
+   "category": "장학금",
+   "title": "[샘플] 예시향토장학회 지역인재 장학생 선발",
+   "organizer": "예시향토장학회(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "수동 입력",
+     "source_id": null,
+     "url": "sample://manual/N-0009",
+     "site_category": null,
+     "note": "캠퍼스칼라 연결 보류 중이라 URL·본문을 직접 입력"
+    }
+   ],
+   "target_text": "전북 출신으로 대학에 재학 중인 30세 이하 학생",
+   "youth_relevant": true,
+   "youth_basis": "대학 재학생 대상",
+   "age_condition": "30세 이하 (만 나이 여부 원문 미표기)",
+   "region": "전북",
+   "region_condition": "전북 출신 (출신 기준: 고교 졸업지 또는 주민등록 — 원문 불명확)",
+   "income_condition": null,
+   "status_condition": "대학 재학생",
+   "benefit_text": "1인 200만 원 등록금 지원",
+   "support_type": "무상지원",
+   "amount_text": "1인 200만 원 (1회)",
+   "amount_value": 2000000,
+   "amount_unit": "원",
+   "amount_period": "1회",
+   "amount_qualifier": "정액",
+   "apply_start": "2026-10-13",
+   "apply_end": "2026-10-31",
+   "apply_end_time": null,
+   "period_text": "2026. 10. 13. ~ 10. 31. (우편 도착분까지)",
+   "apply_status_override": null,
+   "apply_method": "우편 접수",
+   "apply_url": null,
+   "required_docs": "신청서, 재학증명서, 성적증명서, 주민등록초본",
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": "2026-10-12",
+   "first_seen_at": "2026-10-13T10:20:00+09:00",
+   "last_checked_at": "2026-10-13T10:20:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [
+    "age_condition",
+    "region_condition"
+   ],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "sch_kind": "등록금",
+    "pay_amount": "1인 200만 원",
+    "pay_freq": "1회",
+    "year_cond": null,
+    "grade_cond": "직전학기 평점 3.0 이상",
+    "income_cond": null,
+    "dup_allowed": null
+   },
+   "evidence": {
+    "age_condition": "자격 : 30세 이하인 자",
+    "region_condition": "자격 : 전북 출신 대학 재학생"
+   },
+   "history": [
+    {
+     "at": "2026-10-13T10:20:00+09:00",
+     "batch": "수동 입력",
+     "note": "수동 입력으로 등록",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0010",
+   "category": "장학금",
+   "title": "[샘플] 예시 이공계 등록금 장학금",
+   "organizer": "예시과학재단(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "한국장학재단",
+     "source_id": "KS-S-2026-81",
+     "url": "sample://한국장학재단/KS-S-2026-81",
+     "site_category": "장학금 > 국가·공공 장학"
+    }
+   ],
+   "target_text": "이공계열 학과 3학년 재학생",
+   "youth_relevant": true,
+   "youth_basis": "대학 재학생 대상",
+   "age_condition": null,
+   "region": "전국",
+   "region_condition": null,
+   "income_condition": null,
+   "status_condition": "3학년 재학생",
+   "benefit_text": "등록금 전액 (2027년 1학기)",
+   "support_type": "무상지원",
+   "amount_text": "등록금 전액 (실납부액 기준)",
+   "amount_value": null,
+   "amount_unit": null,
+   "amount_period": null,
+   "amount_qualifier": "전액",
+   "apply_start": "2026-11-02",
+   "apply_end": "2026-11-20",
+   "apply_end_time": null,
+   "period_text": "2026. 11. 2. ~ 11. 20.",
+   "apply_status_override": null,
+   "apply_method": "온라인 신청",
+   "apply_url": null,
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": "2026-10-07",
+   "first_seen_at": "2026-10-08T09:03:00+09:00",
+   "last_checked_at": "2026-10-13T09:03:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "sch_kind": "등록금",
+    "pay_amount": "등록금 전액",
+    "pay_freq": "1학기",
+    "grade_cond": "직전학기 평점 3.5 이상",
+    "year_cond": "3학년",
+    "income_cond": null,
+    "dup_allowed": "국가장학금과 합산해 등록금 초과 불가"
+   },
+   "evidence": {},
+   "history": [
+    {
+     "at": "2026-10-08T09:03:00+09:00",
+     "batch": "SAMPLE-20261008",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0011",
+   "category": "장학금",
+   "title": "[샘플] 예시 교내근로 장학 2학기 모집",
+   "organizer": "예시대학교(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "한국장학재단",
+     "source_id": "KS-S-2026-52",
+     "url": "sample://한국장학재단/KS-S-2026-52",
+     "site_category": "장학금 > 근로장학"
+    }
+   ],
+   "target_text": "재학생",
+   "youth_relevant": true,
+   "youth_basis": "대학 재학생 대상",
+   "age_condition": null,
+   "region": "전국",
+   "region_condition": null,
+   "income_condition": null,
+   "status_condition": null,
+   "benefit_text": "시간당 근로장학금 지급",
+   "support_type": "기타",
+   "amount_text": "시간당 1만 1천 원",
+   "amount_value": 11000,
+   "amount_unit": "원",
+   "amount_period": "시간",
+   "amount_qualifier": null,
+   "apply_start": "2026-09-01",
+   "apply_end": "2026-09-30",
+   "apply_end_time": null,
+   "period_text": "2026. 9. 1. ~ 9. 30.",
+   "apply_status_override": null,
+   "apply_method": null,
+   "apply_url": null,
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": "2026-08-28",
+   "first_seen_at": "2026-08-29T09:03:00+09:00",
+   "last_checked_at": "2026-10-13T09:03:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [],
+   "review_status": "검토완료",
+   "review_note": null,
+   "extra": {
+    "sch_kind": "기타",
+    "pay_amount": "시간당 1만 1천 원",
+    "pay_freq": "근로 시간에 따라 월 지급"
+   },
+   "evidence": {},
+   "history": [
+    {
+     "at": "2026-08-29T09:03:00+09:00",
+     "batch": "SAMPLE-20260829",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0012",
+   "category": "생활비",
+   "title": "[샘플] 청년 구직활동 지원수당",
+   "organizer": "예시도 일자리정책과(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "온통청년",
+     "source_id": "YC-S-88120",
+     "url": "sample://온통청년/YC-S-88120",
+     "site_category": "일자리 > 취업지원"
+    }
+   ],
+   "target_text": "경기 거주 만 19~34세 미취업 청년, 기준 중위소득 150% 이하",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '만 19~34세 청년' 명시",
+   "age_condition": "만 19~34세",
+   "region": "경기",
+   "region_condition": "공고일 기준 경기 거주",
+   "income_condition": "기준 중위소득 150% 이하 (가구 기준)",
+   "status_condition": "미취업자 (고용보험 미가입)",
+   "benefit_text": "월 50만 원씩 최대 6개월 지급",
+   "support_type": "무상지원",
+   "amount_text": "월 50만 원 × 최대 6개월",
+   "amount_value": 500000,
+   "amount_unit": "원",
+   "amount_period": "월",
+   "amount_qualifier": "정액",
+   "apply_start": "2026-10-05",
+   "apply_end": "2026-10-24",
+   "apply_end_time": null,
+   "period_text": "2026. 10. 5. ~ 10. 24. (예산 소진 시 조기 마감)",
+   "apply_status_override": null,
+   "apply_method": "도 청년포털 온라인 신청",
+   "apply_url": null,
+   "required_docs": "주민등록초본, 건강보험 자격득실확인서",
+   "exclusions": "국민취업지원제도 등 유사 수당 수급자 제외",
+   "official_url": "sample://org/N-0012",
+   "attachment_url": null,
+   "posted_at": "2026-09-30",
+   "first_seen_at": "2026-10-01T09:04:00+09:00",
+   "last_checked_at": "2026-10-13T09:04:00+09:00",
+   "last_changed_at": "2026-10-13T09:04:00+09:00",
+   "changed_fields": [
+    "age_condition",
+    "target_text"
+   ],
+   "needs_review_fields": [],
+   "review_status": "미검토",
+   "review_note": "이전에 검토완료였으나 지원대상 변경으로 미검토로 되돌림",
+   "extra": {
+    "amount_period_text": "월 50만 원, 최대 6개월",
+    "budget_end": "예산 소진 시 조기 마감 (원문 명시)",
+    "household": "본인 포함 주민등록상 가구",
+    "housing": null,
+    "self_pay": null,
+    "loan_terms": null
+   },
+   "evidence": {
+    "age_condition": "[변경] 지원대상 : 만 19세 이상 34세 이하",
+    "amount_text": "지원내용 : 월 50만원, 최대 6개월"
+   },
+   "history": [
+    {
+     "at": "2026-10-13T09:04:00+09:00",
+     "batch": "SAMPLE-20261013",
+     "note": "공고 수정 감지",
+     "changes": [
+      {
+       "field": "age_condition",
+       "before": "만 18~34세",
+       "after": "만 19~34세"
+      },
+      {
+       "field": "target_text",
+       "before": "경기 거주 만 18~34세 미취업 청년…",
+       "after": "경기 거주 만 19~34세 미취업 청년…"
+      },
+      {
+       "field": "review_status",
+       "before": "검토완료",
+       "after": "미검토"
+      }
+     ]
+    },
+    {
+     "at": "2026-10-01T09:04:00+09:00",
+     "batch": "SAMPLE-20261001",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0013",
+   "category": "생활비",
+   "title": "[샘플] 저소득 청년 교통비 환급",
+   "organizer": "예시교통공단(가상)",
+   "info_type": "상시 제도 안내",
+   "sources": [
+    {
+     "site": "정부24",
+     "source_id": "G24-S-3301",
+     "url": "sample://정부24/G24-S-3301",
+     "site_category": "보조금24 > 생활안정"
+    }
+   ],
+   "target_text": "기준 중위소득 100% 이하 가구의 만 19~34세 청년",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '만 19~34세 청년' 명시",
+   "age_condition": "만 19~34세",
+   "region": "전국",
+   "region_condition": null,
+   "income_condition": "기준 중위소득 100% 이하",
+   "status_condition": null,
+   "benefit_text": "대중교통 이용액의 일부를 월 최대 3만 원까지 환급",
+   "support_type": "무상지원",
+   "amount_text": "월 최대 3만 원",
+   "amount_value": 30000,
+   "amount_unit": "원",
+   "amount_period": "월",
+   "amount_qualifier": "최대",
+   "apply_start": null,
+   "apply_end": null,
+   "apply_end_time": null,
+   "period_text": "상시 신청",
+   "apply_status_override": null,
+   "apply_method": "전용 앱에서 신청",
+   "apply_url": null,
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": null,
+   "first_seen_at": "2026-09-20T09:05:00+09:00",
+   "last_checked_at": "2026-10-13T09:05:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "amount_period_text": "월 최대 3만 원, 기간 제한 미기재",
+    "budget_end": null,
+    "household": "가구 소득 기준",
+    "housing": null,
+    "self_pay": "환급 외 이용료 본인 부담",
+    "loan_terms": null
+   },
+   "evidence": {
+    "amount_text": "지원금액 : 월 최대 3만원(이용 실적에 따라 차등)"
+   },
+   "history": [
+    {
+     "at": "2026-09-20T09:05:00+09:00",
+     "batch": "SAMPLE-20260920",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0014",
+   "category": "생활비",
+   "title": "[샘플] 부산 청년 생활안정 지원금",
+   "organizer": "예시광역시 청년정책담당관(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "온통청년",
+     "source_id": "YC-S-88301",
+     "url": "sample://온통청년/YC-S-88301",
+     "site_category": "생활·복지 > 생활지원"
+    },
+    {
+     "site": "정부24",
+     "source_id": "G24-S-3415",
+     "url": "sample://정부24/G24-S-3415",
+     "site_category": "보조금24 > 생활안정"
+    }
+   ],
+   "target_text": "부산 거주 만 19~39세 청년 중 기준 중위소득 120% 이하",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '만 19~39세 청년' 명시",
+   "age_condition": "만 19~39세",
+   "region": "부산",
+   "region_condition": "신청일 기준 부산 거주 6개월 이상",
+   "income_condition": "기준 중위소득 120% 이하",
+   "status_condition": null,
+   "benefit_text": null,
+   "support_type": "무상지원",
+   "amount_text": null,
+   "amount_value": null,
+   "amount_unit": null,
+   "amount_period": null,
+   "amount_qualifier": null,
+   "apply_start": "2026-10-12",
+   "apply_end": "2026-10-30",
+   "apply_end_time": null,
+   "period_text": "2026. 10. 12. ~ 10. 30.",
+   "apply_status_override": null,
+   "apply_method": null,
+   "apply_url": null,
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": "2026-10-08",
+   "first_seen_at": "2026-10-13T09:04:00+09:00",
+   "last_checked_at": "2026-10-13T09:05:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [
+    "amount_text",
+    "benefit_text"
+   ],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "amount_period_text": null,
+    "budget_end": null,
+    "household": null,
+    "housing": null,
+    "self_pay": null,
+    "loan_terms": null
+   },
+   "evidence": {
+    "amount_text": "온통청년: '월 30만원 지원' / 정부24: '월 20만원 지원' — 주최기관 공식 공고 확인 전"
+   },
+   "history": [
+    {
+     "at": "2026-10-13T09:05:00+09:00",
+     "batch": "SAMPLE-20261013",
+     "note": "정부24 게시물을 같은 공고로 연결 (금액 불일치로 확인 필요 표시)",
+     "changes": []
+    },
+    {
+     "at": "2026-10-13T09:04:00+09:00",
+     "batch": "SAMPLE-20261013",
+     "note": "최초 수집 (온통청년)",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [
+    {
+     "field": "amount_text",
+     "values": [
+      {
+       "site": "온통청년",
+       "value": "월 30만 원"
+      },
+      {
+       "site": "정부24",
+       "value": "월 20만 원"
+      }
+     ]
+    }
+   ],
+   "flags": {}
+  },
+  {
+   "id": "N-0015",
+   "category": "주거비",
+   "title": "[샘플] 대구 청년 월세 지원",
+   "organizer": "예시시 주거복지과(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "온통청년",
+     "source_id": "YC-S-88250",
+     "url": "sample://온통청년/YC-S-88250",
+     "site_category": "주거 > 주거비 지원"
+    }
+   ],
+   "target_text": "부모와 별도 거주하는 대구 거주 만 19~34세 무주택 청년",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '만 19~34세 청년' 명시",
+   "age_condition": "만 19~34세",
+   "region": "대구",
+   "region_condition": "대구 거주, 부모와 별도 거주",
+   "income_condition": "청년가구 기준 중위소득 60% 이하, 원가구 100% 이하",
+   "status_condition": null,
+   "benefit_text": "월 최대 20만 원, 최대 12개월 월세 지원",
+   "support_type": "무상지원",
+   "amount_text": "월 최대 20만 원",
+   "amount_value": 200000,
+   "amount_unit": "원",
+   "amount_period": "월",
+   "amount_qualifier": "최대",
+   "apply_start": "2026-10-15",
+   "apply_end": "2026-10-30",
+   "apply_end_time": null,
+   "period_text": "2026. 10. 15. ~ 10. 30.",
+   "apply_status_override": null,
+   "apply_method": "복지로 또는 주민센터 방문",
+   "apply_url": null,
+   "required_docs": "임대차계약서, 월세 이체 내역, 가족관계증명서",
+   "exclusions": "주거급여 수급자 등 중복 지원 제외",
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": "2026-10-08",
+   "first_seen_at": "2026-10-09T09:04:00+09:00",
+   "last_checked_at": "2026-10-13T09:04:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "amount_period_text": "월 최대 20만 원, 최대 12개월",
+    "budget_end": "예산 소진 시 조기 종료",
+    "household": "청년 독립가구 + 원가구 소득 별도 심사",
+    "housing": "보증금 5천만 원 이하·월세 60만 원 이하 주택 임차",
+    "self_pay": "월세 중 20만 원 초과분 본인 부담",
+    "loan_terms": null
+   },
+   "evidence": {
+    "amount_text": "지원내용 : 월 최대 20만원(실제 월세 범위 내), 최대 12개월"
+   },
+   "history": [
+    {
+     "at": "2026-10-09T09:04:00+09:00",
+     "batch": "SAMPLE-20261009",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0016",
+   "category": "주거비",
+   "title": "[샘플] 청년 전월세 보증금 대출 이자지원",
+   "organizer": "예시시 주택정책과(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "정부24",
+     "source_id": "G24-S-3120",
+     "url": "sample://정부24/G24-S-3120",
+     "site_category": "보조금24 > 주거"
+    }
+   ],
+   "target_text": "인천 거주 만 19~39세 무주택 청년",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '만 19~39세 청년' 명시",
+   "age_condition": "만 19~39세",
+   "region": "인천",
+   "region_condition": "인천 거주",
+   "income_condition": "연소득 5천만 원 이하",
+   "status_condition": null,
+   "benefit_text": "협약 은행 보증금 대출 이자 일부 지원",
+   "support_type": "이자지원",
+   "amount_text": "대출금리 중 연 최대 2.0%p 지원",
+   "amount_value": null,
+   "amount_unit": null,
+   "amount_period": "연",
+   "amount_qualifier": "최대",
+   "apply_start": "2026-01-02",
+   "apply_end": "2026-12-31",
+   "apply_end_time": null,
+   "period_text": "2026. 1. 2. ~ 12. 31. (예산 소진 시 종료)",
+   "apply_status_override": null,
+   "apply_method": "협약 은행 대출 후 온라인 신청",
+   "apply_url": null,
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": "sample://org/N-0016",
+   "attachment_url": null,
+   "posted_at": null,
+   "first_seen_at": "2026-01-05T09:05:00+09:00",
+   "last_checked_at": "2026-10-13T09:05:00+09:00",
+   "last_changed_at": "2026-10-13T09:05:00+09:00",
+   "changed_fields": [
+    "loan_terms"
+   ],
+   "needs_review_fields": [],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "amount_period_text": "이자지원 최대 2년",
+    "budget_end": "예산 소진 시 종료",
+    "household": null,
+    "housing": "임차보증금 3억 원 이하",
+    "self_pay": "지원분 제외 대출이자와 원금 전액 본인 부담",
+    "loan_terms": "대출 한도 최대 7,000만 원 / 이자지원 최대 2년 / 원금 상환은 본인 부담"
+   },
+   "evidence": {
+    "extra_loan_terms": "[변경] 대출한도 7천만원 이내 (기존 6천만원)"
+   },
+   "history": [
+    {
+     "at": "2026-10-13T09:05:00+09:00",
+     "batch": "SAMPLE-20261013",
+     "note": "공고 수정 감지",
+     "changes": [
+      {
+       "field": "loan_terms",
+       "before": "대출 한도 최대 6,000만 원 / 이자지원 최대 2년",
+       "after": "대출 한도 최대 7,000만 원 / 이자지원 최대 2년 / 원금 상환은 본인 부담"
+      }
+     ]
+    },
+    {
+     "at": "2026-01-05T09:05:00+09:00",
+     "batch": "SAMPLE-20260105",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0017",
+   "category": "주거비",
+   "title": "[샘플] 청년 전용 보증금 대출 상품 안내",
+   "organizer": "예시주택금융기관(가상)",
+   "info_type": "상시 제도 안내",
+   "sources": [
+    {
+     "site": "정부24",
+     "source_id": "G24-S-2004",
+     "url": "sample://정부24/G24-S-2004",
+     "site_category": "서비스 > 주거·금융"
+    }
+   ],
+   "target_text": "만 19~34세 무주택 세대주",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '만 19~34세' 명시",
+   "age_condition": "만 19~34세",
+   "region": "전국",
+   "region_condition": null,
+   "income_condition": "연소득 5천만 원 이하, 순자산 기준 별도",
+   "status_condition": null,
+   "benefit_text": "임차보증금 대출",
+   "support_type": "대출",
+   "amount_text": "대출 한도 최대 1억 원 (상환 필요)",
+   "amount_value": 100000000,
+   "amount_unit": "원",
+   "amount_period": null,
+   "amount_qualifier": "최대",
+   "apply_start": null,
+   "apply_end": null,
+   "apply_end_time": null,
+   "period_text": "상시",
+   "apply_status_override": null,
+   "apply_method": "취급 은행 방문 또는 앱",
+   "apply_url": null,
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": null,
+   "first_seen_at": "2026-03-02T09:05:00+09:00",
+   "last_checked_at": "2026-10-13T09:05:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [],
+   "review_status": "검토완료",
+   "review_note": null,
+   "extra": {
+    "amount_period_text": "최장 10년",
+    "budget_end": null,
+    "household": "무주택 세대주",
+    "housing": "임차보증금 3억 원 이하",
+    "self_pay": "원금·이자 전액 상환",
+    "loan_terms": "연 2.2~3.3% (소득·보증금 구간별) / 한도 최대 1억 원 / 만기일시상환, 최장 10년"
+   },
+   "evidence": {},
+   "history": [
+    {
+     "at": "2026-03-02T09:05:00+09:00",
+     "batch": "SAMPLE-20260302",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0018",
+   "category": "주거비",
+   "title": "[샘플] 청년 이사비 지원",
+   "organizer": "예시구 복지정책과(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "온통청년",
+     "source_id": "YC-S-88199",
+     "url": "sample://온통청년/YC-S-88199",
+     "site_category": "주거 > 주거비 지원"
+    }
+   ],
+   "target_text": "광주 거주 만 19~39세 청년 중 전입 6개월 이내",
+   "youth_relevant": true,
+   "youth_basis": "원문에 '만 19~39세 청년' 명시",
+   "age_condition": "만 19~39세",
+   "region": "광주",
+   "region_condition": "광주 전입 6개월 이내",
+   "income_condition": null,
+   "status_condition": null,
+   "benefit_text": "이사 비용·중개수수료 실비 지원",
+   "support_type": "무상지원",
+   "amount_text": "1회 최대 40만 원",
+   "amount_value": 400000,
+   "amount_unit": "원",
+   "amount_period": "1회",
+   "amount_qualifier": "최대",
+   "apply_start": "2026-10-05",
+   "apply_end": "2026-10-24",
+   "apply_end_time": null,
+   "period_text": "2026. 10. 5. ~ 10. 24. (정정공고로 연장)",
+   "apply_status_override": null,
+   "apply_method": "구청 누리집 신청",
+   "apply_url": null,
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": "sample://file/N-0018-correction.pdf",
+   "posted_at": "2026-10-02",
+   "first_seen_at": "2026-10-03T09:04:00+09:00",
+   "last_checked_at": "2026-10-13T09:04:00+09:00",
+   "last_changed_at": "2026-10-13T09:04:00+09:00",
+   "changed_fields": [
+    "apply_end",
+    "period_text"
+   ],
+   "needs_review_fields": [],
+   "review_status": "미검토",
+   "review_note": null,
+   "extra": {
+    "amount_period_text": "1회, 최대 40만 원",
+    "budget_end": "예산 소진 시 종료",
+    "household": null,
+    "housing": "무주택",
+    "self_pay": "40만 원 초과분 본인 부담",
+    "loan_terms": null
+   },
+   "evidence": {
+    "apply_end": "[정정] 신청기간 : 10. 5. ~ 10. 24. (당초 10. 17.)"
+   },
+   "history": [
+    {
+     "at": "2026-10-13T09:04:00+09:00",
+     "batch": "SAMPLE-20261013",
+     "note": "정정공고 발견 → 기존 공고에 연결",
+     "changes": [
+      {
+       "field": "apply_end",
+       "before": "2026-10-17",
+       "after": "2026-10-24"
+      },
+      {
+       "field": "period_text",
+       "before": "2026. 10. 5. ~ 10. 17.",
+       "after": "2026. 10. 5. ~ 10. 24. (정정공고로 연장)"
+      }
+     ]
+    },
+    {
+     "at": "2026-10-03T09:04:00+09:00",
+     "batch": "SAMPLE-20261003",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [
+    {
+     "type": "정정공고",
+     "id": null,
+     "title": "[정정] 청년 이사비 지원 신청기간 변경 안내",
+     "url": "sample://youthcenter/YC-S-88340"
+    }
+   ],
+   "conflicts": [],
+   "flags": {}
+  },
+  {
+   "id": "N-0019",
+   "category": "공모전",
+   "title": "[샘플] 예시 앱 서포터즈 홍보 이벤트",
+   "organizer": "예시앱 운영사(가상)",
+   "info_type": "모집공고",
+   "sources": [
+    {
+     "site": "링커리어",
+     "source_id": "LK-S-1110",
+     "url": "sample://링커리어/LK-S-1110",
+     "site_category": "대외활동 > 서포터즈"
+    }
+   ],
+   "target_text": "누구나",
+   "youth_relevant": false,
+   "youth_basis": "대학생·청년 대상 명시 없음, 앱 설치 유도 이벤트",
+   "age_condition": null,
+   "region": "전국",
+   "region_condition": null,
+   "income_condition": null,
+   "status_condition": null,
+   "benefit_text": null,
+   "support_type": null,
+   "amount_text": null,
+   "amount_value": null,
+   "amount_unit": null,
+   "amount_period": null,
+   "amount_qualifier": null,
+   "apply_start": "2026-10-01",
+   "apply_end": "2026-10-31",
+   "apply_end_time": null,
+   "period_text": "10. 1. ~ 10. 31.",
+   "apply_status_override": null,
+   "apply_method": null,
+   "apply_url": null,
+   "required_docs": null,
+   "exclusions": null,
+   "official_url": null,
+   "attachment_url": null,
+   "posted_at": null,
+   "first_seen_at": "2026-10-02T09:01:00+09:00",
+   "last_checked_at": "2026-10-13T09:02:00+09:00",
+   "last_changed_at": null,
+   "changed_fields": [],
+   "needs_review_fields": [],
+   "review_status": "제외",
+   "review_note": "모집 공고가 아닌 일반 홍보 게시글로 판단",
+   "extra": {},
+   "evidence": {},
+   "history": [
+    {
+     "at": "2026-10-02T09:01:00+09:00",
+     "batch": "SAMPLE-20261002",
+     "note": "최초 수집",
+     "changes": []
+    }
+   ],
+   "related": [],
+   "conflicts": [],
+   "flags": {}
+  }
+ ]
+}

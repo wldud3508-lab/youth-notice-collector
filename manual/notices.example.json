@@ -1,0 +1,13 @@
+[
+  {
+    "source_site": "위비티",
+    "source_url": "https://example.com/여기에-실제-게시물-주소",
+    "category": "공모전",
+    "title": "여기에 공고명을 그대로 적기",
+    "organizer": "주최기관명",
+    "period_text": "2026. 11. 1. ~ 11. 30. 18:00",
+    "benefit_text": "대상 300만 원 외",
+    "official_url": null,
+    "note": "예시 항목입니다. 이 파일을 notices.json 으로 복사한 뒤 실제 공고로 바꾸세요."
+  }
+]

@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/youth-notice/notice-data.schema.json",
+  "title": "청년 공고 관리 — 수집 결과 파일 (latest.json)",
+  "description": "수집기가 내보내고 관리 화면이 읽는 단일 JSON 파일의 구조. 정보가 없는 값은 빈 문자열이나 0이 아니라 null로 둔다.",
+  "type": "object",
+  "required": ["meta", "sources", "notices"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": { "$ref": "#/$defs/meta" },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "notices": { "type": "array", "items": { "$ref": "#/$defs/notice" } }
+  },
+  "$defs": {
+    "nstr": { "type": ["string", "null"], "minLength": 1 },
+    "date": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "datetime": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?([+-]\\d{2}:\\d{2}|Z)$" },
+
+    "meta": {
+      "type": "object",
+      "required": ["mode", "schema_version", "batch_id", "reference_date", "generated_at"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["sample", "collected"], "description": "sample = 화면 시험용 가상 데이터, collected = 수집기가 실제 출처에서 만든 데이터. 샘플 파일의 mode를 바꿔 쓰지 않는다." },
+        "schema_version": { "const": "0.1" },
+        "batch_id": { "type": "string", "description": "하루 단위 배치 ID. 실제 수집은 KST 날짜(예: 2026-10-14)" },
+        "reference_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "신청 상태·D-day 계산 기준일(KST)" },
+        "generated_at": { "$ref": "#/$defs/datetime" },
+        "batch_status": { "enum": ["정상 완료", "부분 성공", "실패", null], "description": "모든 출처 성공 / 일부 성공 / 성공한 출처 없음" },
+        "collector_version": { "$ref": "#/$defs/nstr" },
+        "collect_trigger_url": { "$ref": "#/$defs/nstr", "description": "'지금 수집' 버튼이 여는 주소(예: GitHub Actions 워크플로 페이지). 없으면 버튼 비활성" }
+      }
+    },
+
+    "source": {
+      "type": "object",
+      "required": ["key", "name", "categories", "connection", "run"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "name": { "type": "string" },
+        "categories": { "type": "array", "items": { "enum": ["공모전", "장학금", "생활비", "주거비"] } },
+        "connection": { "type": "string", "description": "예: '연결됨 · 공식 API', '연결 보류 · 이용약관상 자동수집 불가', '미연결 · 인증키 없음'" },
+        "method": { "$ref": "#/$defs/nstr", "description": "공식 API / 공식 RSS / 수동 입력 등" },
+        "run": {
+          "type": "object",
+          "required": ["status", "collected", "new", "changed", "error", "last_success_at"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "enum": ["성공", "실패", "연결 보류", "미연결", "미실행"] },
+            "collected": { "type": ["integer", "null"], "minimum": 0, "description": "성공이 아니면 null (0으로 쓰지 않음)" },
+            "new": { "type": ["integer", "null"], "minimum": 0 },
+            "changed": { "type": ["integer", "null"], "minimum": 0 },
+            "error": { "$ref": "#/$defs/nstr" },
+            "last_success_at": { "$ref": "#/$defs/datetime" },
+            "attempts": { "type": ["integer", "null"], "minimum": 0 },
+            "fetched_raw": { "type": ["integer", "null"], "minimum": 0, "description": "출처에서 받은 전체 건수(분류·필터 전)" }
+          }
+        }
+      }
+    },
+
+    "sourceRef": {
+      "type": "object",
+      "required": ["site", "source_id", "url", "site_category"],
+      "additionalProperties": false,
+      "properties": {
+        "site": { "type": "string" },
+        "source_key": { "$ref": "#/$defs/nstr" },
+        "source_id": { "$ref": "#/$defs/nstr" },
+        "url": { "$ref": "#/$defs/nstr" },
+        "site_category": { "$ref": "#/$defs/nstr", "description": "출처 사이트의 원래 분류(프로그램 분류와 별도)" },
+        "note": { "$ref": "#/$defs/nstr" }
+      }
+    },
+
+    "notice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "category", "title", "info_type", "sources", "first_seen_at", "last_checked_at",
+                   "changed_fields", "needs_review_fields", "review_status", "extra", "evidence", "history", "related", "conflicts", "flags"],
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "enum": ["공모전", "장학금", "생활비", "주거비"] },
+        "title": { "type": "string" },
+        "organizer": { "$ref": "#/$defs/nstr" },
+        "info_type": { "enum": ["모집공고", "상시 제도 안내", null] },
+        "sources": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/sourceRef" } },
+
+        "target_text": { "$ref": "#/$defs/nstr" },
+        "youth_relevant": { "type": ["boolean", "null"] },
+        "youth_basis": { "$ref": "#/$defs/nstr" },
+        "age_condition": { "$ref": "#/$defs/nstr" },
+        "region": { "$ref": "#/$defs/nstr", "description": "필터용 정규화 지역(전국/서울/부산/…/복수 지역)" },
+        "region_condition": { "$ref": "#/$defs/nstr" },
+        "income_condition": { "$ref": "#/$defs/nstr" },
+        "status_condition": { "$ref": "#/$defs/nstr" },
+
+        "benefit_text": { "$ref": "#/$defs/nstr" },
+        "support_type": { "enum": ["무상지원", "대출", "이자지원", "기타", null] },
+        "amount_text": { "$ref": "#/$defs/nstr", "description": "원문 표현 그대로(예: '월 최대 20만 원')" },
+        "amount_value": { "type": ["number", "null"] },
+        "amount_unit": { "$ref": "#/$defs/nstr" },
+        "amount_period": { "$ref": "#/$defs/nstr", "description": "월/연/학기/1회 등 — 총액·월액·연액 구분" },
+        "amount_qualifier": { "$ref": "#/$defs/nstr", "description": "최대/정액/총액/건당 등" },
+
+        "apply_start": { "$ref": "#/$defs/date" },
+        "apply_end": { "$ref": "#/$defs/date" },
+        "apply_end_time": { "type": ["string", "null"], "pattern": "^\\d{2}:\\d{2}$" },
+        "period_text": { "$ref": "#/$defs/nstr" },
+        "apply_status_override": { "enum": ["조기마감", "취소", "모집중단", null] },
+        "apply_method": { "$ref": "#/$defs/nstr" },
+        "apply_url": { "$ref": "#/$defs/nstr" },
+        "required_docs": { "$ref": "#/$defs/nstr" },
+        "exclusions": { "$ref": "#/$defs/nstr" },
+        "official_url": { "$ref": "#/$defs/nstr" },
+        "attachment_url": { "$ref": "#/$defs/nstr" },
+
+        "posted_at": { "$ref": "#/$defs/date", "description": "게시·등록일. 신청 시작일과 별개" },
+        "first_seen_at": { "$ref": "#/$defs/datetime" },
+        "last_checked_at": { "$ref": "#/$defs/datetime" },
+        "last_changed_at": { "$ref": "#/$defs/datetime" },
+        "changed_fields": { "type": "array", "items": { "type": "string" } },
+        "needs_review_fields": { "type": "array", "items": { "type": "string" } },
+        "review_status": { "enum": ["미검토", "검토완료", "제외"] },
+        "review_note": { "$ref": "#/$defs/nstr" },
+
+        "extra": { "type": "object", "description": "분야별 추가 항목. 공모전: contest_field, theme, team_type, submission, prize_text / 장학금: sch_kind, pay_amount, pay_freq, grade_cond, year_cond, income_cond, dup_allowed / 생활비·주거비: amount_period_text, budget_end, household, housing, self_pay, loan_terms",
+          "additionalProperties": { "type": ["string", "null"] } },
+        "evidence": { "type": "object", "description": "필드명 → 원문 근거 문장(짧은 발췌)", "additionalProperties": { "type": "string" } },
+        "history": { "type": "array", "items": {
+          "type": "object", "required": ["at", "batch", "note", "changes"], "additionalProperties": false,
+          "properties": {
+            "at": { "$ref": "#/$defs/datetime" }, "batch": { "type": "string" }, "note": { "type": "string" },
+            "changes": { "type": "array", "items": { "type": "object", "required": ["field", "before", "after"], "additionalProperties": false,
+              "properties": { "field": { "type": "string" }, "before": {}, "after": {} } } } } } },
+        "related": { "type": "array", "items": {
+          "type": "object", "required": ["type"], "additionalProperties": false,
+          "properties": { "type": { "type": "string" }, "id": { "$ref": "#/$defs/nstr" }, "title": { "$ref": "#/$defs/nstr" },
+                          "url": { "$ref": "#/$defs/nstr" }, "note": { "$ref": "#/$defs/nstr" } } } },
+        "conflicts": { "type": "array", "items": {
+          "type": "object", "required": ["field", "values"], "additionalProperties": false,
+          "properties": { "field": { "type": "string" }, "values": { "type": "array", "items": {
+            "type": "object", "required": ["site", "value"], "additionalProperties": false,
+            "properties": { "site": { "type": "string" }, "value": {} } } } } } },
+        "flags": { "type": "object" }
+      }
+    }
+  }
+}
