@@ -90,6 +90,11 @@ nav.views .wrap{display:flex;gap:2px;overflow-x:auto;scrollbar-width:thin}
 .list-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);flex-wrap:wrap}
 .list-head select{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:4px 6px;font-size:12.5px}
 .list{list-style:none;margin:0;padding:0}
+.status-bar{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.status-bar b{color:var(--ink);font-variant-numeric:tabular-nums}
+.sb-btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:2px 9px;cursor:pointer;font-size:12.5px;display:inline-flex;gap:5px;align-items:center}
+.sb-btn[aria-pressed="true"]{border-color:var(--ink);background:var(--surface-2)}
+.sb-btn .n{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink)}
 .row{display:grid;grid-template-columns:4px minmax(0,1fr) auto;gap:0 12px;padding:11px 14px 11px 0;border-bottom:1px solid var(--line);cursor:pointer;background:var(--surface)}
 .row:last-child{border-bottom:0}
 .row:hover{background:var(--surface-2)}
@@ -246,6 +251,7 @@ textarea.csv{width:100%;min-height:180px;font-family:var(--font-mono);font-size:
           <option value="seen">최근 수집 순</option>
         </select></label>
       </div>
+      <div class="status-bar" id="statusBar" aria-label="신청 상태별 건수"></div>
       <ul class="list" id="list"></ul>
     </section>
     <section class="panel detail" id="detail" aria-label="공고 상세"></section>
@@ -475,7 +481,12 @@ function renderList(){
   $("main").style.display = "";
   $("listPanel").hidden = false;
   const list = currentList();
-  $("listCount").textContent = `${list.length}건 · 기준일 ${fmtDate(TODAY)}`;
+  $("listCount").textContent = `현재 목록 ${list.length}건 · 기준일 ${fmtDate(TODAY)}`;
+  // 누적 건수(마감 포함)와 신청 상태별 건수를 따로 보여 줌. 누르면 신청 상태 필터가 걸림
+  const cnt = {}; STATUSES.forEach(s => cnt[s] = 0);
+  DATA.notices.forEach(n => { const s = applyStatus(n); cnt[s] = (cnt[s]||0) + 1; });
+  $("statusBar").innerHTML = `<span>누적 <b>${DATA.notices.length}</b>건 중</span>` +
+    STATUSES.map(s => `<button type="button" class="sb-btn" data-st="${esc(s)}" aria-pressed="${state.status===s}">${esc(s)} <span class="n">${cnt[s]||0}</span></button>`).join("");
   $("list").innerHTML = list.length ? list.map(rowHTML).join("") : `<li class="empty">조건에 맞는 공고가 없습니다. 필터를 조정해 보세요.</li>`;
   if (state.selected && !DATA.notices.find(n=>n.id===state.selected)) state.selected = null;
   renderDetail();
@@ -716,6 +727,7 @@ $("q").addEventListener("input", e => { state.q = e.target.value; renderTabs(); 
 [["fSource","source"],["fRegion","region"],["fStatus","status"],["fDeadline","deadline"],["fReview","review"]].forEach(([id,k]) =>
   $(id).addEventListener("change", e => { state[k] = e.target.value; render(); }));
 $("sort").addEventListener("change", e => { state.sort = e.target.value; renderList(); });
+$("statusBar").addEventListener("click", e => { const b = e.target.closest("[data-st]"); if (!b) return; state.status = state.status === b.dataset.st ? "" : b.dataset.st; render(); });
 $("btnReset").addEventListener("click", () => { Object.assign(state,{q:"",source:"",region:"",status:"",deadline:"",review:""}); state.cats.clear(); $("q").value=""; render(); });
 function select(id){ state.selected = id; state.mobileOpen = true; renderList(); const d = $("detail"); if (d.scrollTo) d.scrollTo(0,0); }
 $("list").addEventListener("click", e => { const r = e.target.closest("[data-id]"); if (r) select(r.dataset.id); });

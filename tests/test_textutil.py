@@ -6,6 +6,16 @@ def test_period_full_range_and_time():
     assert (p.start, p.end, p.end_time) == ("2026-09-28", "2026-10-20", "18:00")
 
 
+def test_period_business_closed_is_closed():
+    # 실제 1차 수집 예시: '2026학년도 대학생 전입지원금 지원'
+    from collector.export import apply_status
+    p = T.parse_period("2026. 5. 6. ~ 6. 1. (사업종료)")
+    assert (p.start, p.end) == ("2026-05-06", "2026-06-01")
+    n = {"apply_start": p.start, "apply_end": p.end, "info_type": "모집공고", "apply_status_override": None}
+    assert apply_status(n, "2026-10-13") == "마감"
+    assert apply_status(n, "2026-05-20") == "접수중"
+
+
 def test_period_compact_and_always():
     p = T.parse_period("20261005 ~ 20261024")
     assert (p.start, p.end) == ("2026-10-05", "2026-10-24")

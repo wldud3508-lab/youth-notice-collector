@@ -59,6 +59,19 @@ def build_sources(store: Store, sources, batch_id: str, include_manual: bool) ->
     return out
 
 
+STATUS_ORDER = ["접수중", "신청예정", "상시", "기간 확인 필요", "마감"]
+
+
+def status_counts(notices: list[dict], today: str) -> dict:
+    """기준일의 신청 상태별 건수. 누적 건수와 별개로 '지금 신청 가능한 건수'를 보여 주기 위함."""
+    c = {k: 0 for k in STATUS_ORDER}
+    for n in notices:
+        st = apply_status(n, today)
+        c[st] = c.get(st, 0) + 1
+    c["누적"] = len(notices)
+    return c
+
+
 def batch_status(srcs: list[dict]) -> str:
     st = [s["run"]["status"] for s in srcs]
     ok, fail = st.count("성공"), st.count("실패")
@@ -81,6 +94,7 @@ def export(store: Store, sources, batch_id: str, out_dir: str | Path, *, include
         "sources": srcs,
         "notices": notices,
     }
+    data["meta"]["status_counts"] = status_counts(notices, batch_id)
     validate(data)
     (out / "latest.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     today = batch_id
@@ -144,8 +158,9 @@ def write_csv(path: Path, rows: list[dict], today: str):
 def summary_md(data: dict) -> str:
     m = data["meta"]
     lines = [f"# 실행 결과 요약 — {m['batch_id']}", "", f"- 배치 상태: **{m['batch_status']}**",
-             f"- 생성 시각: {m['generated_at']}", f"- 누적 공고: {len(data['notices'])}건", "",
-             "| 출처 | 상태 | 수집 | 신규 | 변경 | 오류 | 마지막 성공 |", "|---|---|---:|---:|---:|---|---|"]
+             f"- 생성 시각: {m['generated_at']}", f"- 누적 공고: {len(data['notices'])}건 (마감 포함, 삭제하지 않고 보관)",
+             f"- 기준일 {m['reference_date']} 신청 상태: " + " · ".join(f"{k} {m['status_counts'][k]}건" for k in STATUS_ORDER),
+             "", "| 출처 | 상태 | 수집 | 신규 | 변경 | 오류 | 마지막 성공 |", "|---|---|---:|---:|---:|---|---|"]
     for s in data["sources"]:
         r = s["run"]
         na = "집계 안 됨"
