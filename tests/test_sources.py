@@ -24,6 +24,33 @@ def test_gov24_maps_youth_housing_item():
     assert r.skipped == {"청년·대학생 대상 아님": 1}
 
 
+def test_gov24_age_without_man_is_note_not_required():
+    http = gov24_http([gov24_row(지원대상="19~34세 청년", 선정기준="소득 무관")])
+    rec = Gov24(service_key="K", http=http).fetch().items[0].to_record()
+    assert rec["age_condition"] == "19~34세"                  # 원문 그대로, 만 나이로 환산하지 않음
+    assert "age_condition" not in rec["needs_review_fields"]
+    assert any(x["note"].startswith("나이 산정 기준") for x in rec["review_notes"])
+
+
+def test_gov24_age_conflict_with_condition_code_is_required():
+    http = gov24_http([gov24_row()], cond_rows=[{"서비스ID": "TEST000001", "JA0110": 19, "JA0111": 39}])
+    rec = Gov24(service_key="K", http=http).fetch().items[0].to_record()
+    assert "age_condition" in rec["needs_review_fields"]
+    assert rec["conflicts"][0]["field"] == "age_condition"
+
+
+def test_gov24_period_kind_and_digest():
+    http = gov24_http([gov24_row(신청기한="접수기관 별 상이")])
+    it = Gov24(service_key="K", http=http).fetch().items[0]
+    rec = it.to_record()
+    assert rec["period_kind"] == "기관·유형별 일정 상이" and rec["apply_end"] is None
+    assert {"apply_start", "apply_end"} <= set(rec["needs_review_fields"])
+    assert rec["flags"]["source_digest"]
+    # 조회수만 바뀌면 원본 요약값은 그대로
+    it2 = Gov24(service_key="K", http=gov24_http([gov24_row(신청기한="접수기관 별 상이", 조회수=999)])).fetch().items[0]
+    assert it2.source_digest == it.source_digest
+
+
 def test_gov24_missing_key_is_unconnected_not_failure():
     with pytest.raises(SourceUnavailable) as e:
         Gov24(service_key="").fetch()

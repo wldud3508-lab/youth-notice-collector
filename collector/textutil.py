@@ -76,8 +76,9 @@ def parse_period(text: str | None) -> Period:
     if not t:
         p.needs_review, p.reason = True, "신청기간 원문 없음"
         return p
-    if re.search(r"상시|연중|수시", t) and not re.search(r"\d{4}", t):
-        p.always = True
+    t = normalize_years(t)
+    if re.search(r"상시|연중", t) and not re.search(r"\d{4}", t):
+        p.always = True   # 상시 표기일 뿐 실제 접수 가능 보장은 아님. 세부 판정은 rules.classify_period
         return p
 
     ranges = re.split(r"\n|(?<=\))\s*,", t)
@@ -112,8 +113,6 @@ def parse_period(text: str | None) -> Period:
 
     if not found:
         p.needs_review, p.reason = True, "날짜 형식을 해석하지 못함"
-        if re.search(r"상시|연중|수시", t):
-            p.always, p.needs_review, p.reason = True, False, None
         return p
     if len(found) > 1:
         p.needs_review, p.reason = True, "신청기간이 여러 개(정기·추가 등)"
@@ -139,8 +138,19 @@ def parse_period(text: str | None) -> Period:
         if 0 <= int(h) <= 24:
             p.end_time = f"{int(h):02d}:{mi}"
     if p.start and p.end and p.start > p.end:
-        p.needs_review, p.reason = True, "시작일이 마감일보다 늦음"
+        # 원문 오기 가능성. 어느 쪽이 맞는지 알 수 없으므로 날짜를 쓰지 않는다.
+        p.start = p.end = p.end_time = None
+        p.needs_review, p.reason = True, "원문 날짜 오류(시작일이 마감일보다 늦음)"
     return p
+
+
+def normalize_years(t: str) -> str:
+    """실제 원문에서 확인한 연도 표기 변형만 표준형으로 바꾼다(날짜를 새로 만들지 않음).
+    "'26. 2. 9." → "2026. 2. 9.", "(2026년) 4. 20." → "2026. 4. 20.", "2026 4. 20." → "2026. 4. 20.\""""
+    s = re.sub(r"['’‘](\d{2})(?=\s*[.년])", lambda m: "20" + m.group(1), t)
+    s = re.sub(r"\(\s*(20\d{2})\s*년?\s*\)\s*", r"\1. ", s)
+    s = re.sub(r"(?<![\d.])(20\d{2})\s+(\d{1,2})\s*\.", r"\1. \2.", s)
+    return s
 
 
 def ymd_compact(s: str | None) -> str | None:

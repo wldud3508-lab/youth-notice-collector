@@ -18,7 +18,13 @@ CONTENT_FIELDS = [
     "apply_start", "apply_end", "apply_end_time", "period_text", "apply_status_override",
     "apply_method", "apply_url", "required_docs", "exclusions", "official_url", "attachment_url",
     "posted_at", "extra",
+    "period_kind", "period_flags", "period_month_end", "period_closed_year", "review_notes", "amount_items",
 ]
+
+# 출처 원문을 그대로 옮긴 필드. 이 값이 바뀌면 '공고 내용 변경', 나머지(분류 결과)만 바뀌면 '분류 규칙 변경'.
+# (원본 요약값 flags.source_digest 가 있으면 그것으로 판단하고, 없을 때만 이 목록으로 판단)
+SOURCE_FIELDS = {"title", "organizer", "target_text", "benefit_text", "period_text", "apply_method",
+                 "apply_url", "required_docs", "posted_at", "official_url", "attachment_url"}
 
 EXTRA_KEYS = {
     "공모전": ["contest_field", "theme", "team_type", "submission", "prize_text"],
@@ -39,6 +45,8 @@ BASE: dict = {
     "first_seen_at": None, "last_checked_at": None, "last_changed_at": None,
     "changed_fields": [], "needs_review_fields": [], "review_status": "미검토", "review_note": None,
     "extra": {}, "evidence": {}, "history": [], "related": [], "conflicts": [], "flags": {},
+    "period_kind": None, "period_flags": [], "period_month_end": None, "period_closed_year": None,
+    "review_notes": [], "amount_items": [],
 }
 
 
@@ -66,6 +74,8 @@ class Item:
     fields: dict                # BASE의 내용 필드 일부
     evidence: dict = field(default_factory=dict)
     needs_review: list = field(default_factory=list)
+    source_digest: str | None = None   # 출처 원본 응답(조회수 등 제외)의 해시
+    conflicts: list = field(default_factory=list)   # 같은 출처 안에서 원문끼리 충돌(예: 원문 연령 ↔ 지원조건 코드)
 
     def to_record(self) -> dict:
         rec = copy.deepcopy(BASE)
@@ -85,11 +95,15 @@ class Item:
         }]
         rec["evidence"] = {k: v for k, v in self.evidence.items() if v}
         rec["needs_review_fields"] = sorted(set(self.needs_review))
+        rec["conflicts"] = [c for c in self.conflicts if c]
+        if self.source_digest:
+            rec["flags"] = {**rec.get("flags", {}), "source_digest": self.source_digest}
         return rec
 
 
 def content_of(rec: dict) -> dict:
-    return {k: rec.get(k) for k in CONTENT_FIELDS} | {"needs_review_fields": rec.get("needs_review_fields", [])}
+    return {k: rec.get(k) for k in CONTENT_FIELDS} | {"needs_review_fields": rec.get("needs_review_fields", []),
+                                                    "conflicts": rec.get("conflicts", [])}
 
 
 def content_hash(rec: dict) -> str:

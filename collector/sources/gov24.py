@@ -16,6 +16,7 @@ import re
 import time
 from urllib.parse import unquote
 
+from .. import rules as R
 from .. import textutil as T
 from ..models import Item
 from .base import FetchResult, Source, SourceInfo, SourceUnavailable, UnexpectedResponse, http_get, redact
@@ -128,35 +129,50 @@ class Gov24(Source):
         if not cat:
             return None, cat_basis or "생활비·주거비·장학금 분류에 해당 없음"
 
-        need: list[str] = []
+        need: list[str] = []          # 필수 확인
+        notes: list[dict] = []        # 참고사항(이것만으로 고위험이 아님)
+        conflicts: list[dict] = []
         ev: dict[str, str] = {}
-        period_text = g("신청기한")
-        p = T.parse_period(period_text)
-        if p.needs_review and not p.always:
-            need += ["apply_start", "apply_end"]
-        if period_text:
-            ev["period_text"] = period_text[:160]
-        if p.reason:
-            ev["apply_end"] = f"자동 해석 보류: {p.reason}"
 
-        age, age_ev, age_need = T.parse_age(" ".join(x for x in (target, criteria) if x))
-        if not age and isinstance(a0, int) and isinstance(a1, int) and (a0 > 0 or a1 < 100):
-            age, age_ev, age_need = f"{a0}~{a1}세 (지원조건 코드 기준, 만 나이 여부 원문 확인 필요)", "supportConditions JA0110/JA0111", True
-        if age_need:
+        # ---- 신청기간: 상세 값 우선. 목록 값과 다르면 둘 다 근거로 남김
+        period_text = g("신청기한")
+        list_period = T.clean(row.get("신청기한"))
+        pr = R.classify_period(period_text)
+        if list_period and period_text and list_period != period_text:
+            pr.flags.append("목록·상세 신청기한 다름")
+            ev["period_text"] = f"상세: {period_text[:120]} / 목록: {list_period[:120]}"
+        elif period_text:
+            ev["period_text"] = period_text[:160]
+        if pr.needs_period_check:
+            need += ["apply_start", "apply_end"]
+            ev["apply_end"] = f"신청기간 유형: {pr.kind}" + (f" ({pr.reason})" if pr.reason else "")
+        if pr.kind == R.KIND_ALWAYS:
+            notes.append({"field": "period_text", "note": "상시 표기 — 실제 접수 가능 여부는 원문 확인"})
+
+        # ---- 연령: 만 나이로 환산하지 않음. 원문과 지원조건 코드가 다를 때만 필수 확인
+        code_range = (a0, a1) if isinstance(a0, int) and isinstance(a1, int) and (a0 > 0 or a1 < 100) else None
+        af = R.age_fields(" ".join(x for x in (target, criteria) if x), code_range, "보조금24 지원조건 코드")
+        age = af["age_condition"]
+        if af["evidence"]:
+            ev["age_condition"] = af["evidence"]
+        notes += [{"field": "age_condition", "note": x} for x in af["notes"]]
+        if af["need"]:
             need.append("age_condition")
-        if age_ev:
-            ev["age_condition"] = age_ev
+            conflicts.append(af["conflict"])
 
         stype, st_ev = T.support_type(name, content, g("지원유형"))
         if not stype:
             need.append("support_type")
         elif st_ev:
             ev["support_type"] = st_ev
-        amt = T.parse_amount(content)
-        if amt.ambiguous:
+
+        # ---- 금액: 항목별 정리. 구분되지 않는 서로 다른 금액일 때만 필수 확인
+        am = R.amount_fields(content)
+        if am["evidence"]:
+            ev["amount_text"] = am["evidence"]
+        notes += [{"field": "amount_text", "note": x} for x in am["notes"]]
+        if am["need"]:
             need.append("amount_text")
-        if amt.evidence:
-            ev["amount_text"] = amt.evidence
 
         org = g("소관기관명")
         region, reg_basis = T.region_from_org(org)
@@ -169,7 +185,7 @@ class Gov24(Source):
         extra = {}
         if cat in ("생활비", "주거비"):
             extra = {
-                "amount_period_text": amt.text,
+                "amount_period_text": am["amount_text"],
                 "budget_end": _sentence(" ".join(x for x in (content, criteria, period_text) if x), r"예산\s*(?:소진|범위)"),
                 "household": _sentence(criteria, r"가구"),
                 "housing": _sentence(" ".join(x for x in (criteria, target) if x), r"무주택|보증금|월세|임차"),
@@ -177,19 +193,22 @@ class Gov24(Source):
                 "loan_terms": _sentence(content, r"금리|한도|상환|이자") if stype in ("대출", "이자지원") else None,
             }
         elif cat == "장학금":
-            extra = {"pay_amount": amt.text, "income_cond": income}
+            extra = {"pay_amount": am["amount_text"], "income_cond": income}
 
         fields = {
             "category": cat, "title": name,
             "organizer": " ".join(x for x in (org, g("부서명")) if x) or None,
-            "info_type": "상시 제도 안내" if p.always else "모집공고",
+            "info_type": "상시 제도 안내" if pr.kind in (R.KIND_ALWAYS, R.KIND_NO_APPLY) else "모집공고",
             "target_text": _clip(target), "youth_relevant": True, "youth_basis": basis,
             "age_condition": age, "region": region,
             "region_condition": reg_basis, "income_condition": income, "status_condition": None,
             "benefit_text": _clip(content), "support_type": stype,
-            "amount_text": amt.text, "amount_value": amt.value, "amount_unit": amt.unit,
-            "amount_period": amt.period, "amount_qualifier": amt.qualifier,
-            "apply_start": p.start, "apply_end": p.end, "apply_end_time": p.end_time,
+            "amount_text": am["amount_text"], "amount_value": am["amount_value"], "amount_unit": am["amount_unit"],
+            "amount_period": am["amount_period"], "amount_qualifier": am["amount_qualifier"],
+            "amount_items": am["amount_items"],
+            "apply_start": pr.start, "apply_end": pr.end, "apply_end_time": pr.end_time,
+            "period_kind": pr.kind, "period_flags": pr.flags, "period_month_end": pr.month_end,
+            "period_closed_year": pr.closed_year, "review_notes": notes,
             "period_text": period_text, "apply_method": _clip(g("신청방법")),
             "apply_url": g("온라인신청사이트URL"), "required_docs": _clip(g("구비서류")),
             "exclusions": _sentence(criteria, r"제외|중복\s*(?:수혜|지원)|불가"),
@@ -200,4 +219,14 @@ class Gov24(Source):
         ev["category"] = cat_basis or ""
         site_cat = " / ".join(x for x in (g("서비스분야"), g("지원유형")) if x) or None
         url = g("상세조회URL")   # 없으면 주소를 추측해 만들지 않는다
-        return Item("gov24", "정부24", sid, url, site_cat, fields, ev, need), ""
+        item = Item("gov24", "정부24", sid, url, site_cat, fields, ev, need, source_digest=_digest(row, detail, cond))
+        item.conflicts = conflicts
+        return item, ""
+
+
+def _digest(row, detail, cond) -> str:
+    """출처 원본 응답의 해시. 매일 바뀌는 조회수는 제외. 이 값이 같으면 공고 원문은 바뀌지 않은 것."""
+    import hashlib
+    import json
+    body = {"list": {k: v for k, v in (row or {}).items() if k != "조회수"}, "detail": detail or {}, "cond": cond or {}}
+    return hashlib.sha256(json.dumps(body, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:20]

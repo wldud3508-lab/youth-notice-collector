@@ -14,17 +14,43 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schema" / "notice-data.s
 VERSION = "0.1.0"
 
 
-def apply_status(n: dict, today: str) -> str:
-    if n.get("apply_status_override"):
-        return n["apply_status_override"]
-    s, e = n.get("apply_start"), n.get("apply_end")
-    if not s and not e:
-        return "상시" if n.get("info_type") == "상시 제도 안내" else "기간 확인 필요"
-    if s and today < s:
-        return "신청예정"
-    if e and today > e:
-        return "마감"
-    return "접수중"
+from .rules import STATUS_ORDER, apply_status  # noqa: E402  (화면과 같은 상태 규칙)
+from . import rules as R  # noqa: E402
+
+# 대상·혜택·기간에 중요한 충돌이 있으면 '오늘 검토 후보'에서 뺀다
+BLOCKING = {"apply_start", "apply_end", "age_condition", "amount_text", "target_text", "benefit_text", "중복 여부"}
+
+
+def is_candidate(n: dict, today: str) -> bool:
+    """오늘 검토할 후보: 청년 관련성 확인 + 신청기간이 명확한 접수중·신청예정 + 중요 충돌 없음 + 제외 아님."""
+    if n.get("review_status") == "제외" or n.get("youth_relevant") is not True:
+        return False
+    if apply_status(n, today) not in (R.ST_OPEN, R.ST_UPCOMING) or not n.get("apply_end"):
+        return False
+    if any(c.get("field") in BLOCKING for c in n.get("conflicts") or []):
+        return False
+    return not (BLOCKING & set(n.get("needs_review_fields") or []))
+
+
+def review_summary(notices: list[dict], today: str) -> dict:
+    """'분류 성공'과 '정보 확인 완료'를 구분해 집계."""
+    dated = [n for n in notices if n.get("apply_start") or n.get("apply_end")]
+    undated = [n for n in notices if not (n.get("apply_start") or n.get("apply_end"))]
+    unknown = [n for n in undated if n.get("period_kind") in (None, R.KIND_UNKNOWN)]
+    out = {
+        "날짜 확정": len(dated),
+        "신청기간 확인 필요": sum(1 for n in undated if n.get("period_kind") in R.NEEDS_PERIOD_CHECK or n.get("period_kind") is None),
+        "사유 분류됨": len(undated) - len(unknown),
+        "사유 미분류": len(unknown),
+        "필수 확인 항목 있음": sum(1 for n in notices if n.get("needs_review_fields") or n.get("conflicts")),
+        "참고사항만 있음": sum(1 for n in notices if n.get("review_notes") and not (n.get("needs_review_fields") or n.get("conflicts"))),
+        "오늘 검토 후보": sum(1 for n in notices if is_candidate(n, today)),
+    }
+    for k in R.PERIOD_KINDS:
+        c = sum(1 for n in notices if n.get("period_kind") == k)
+        if c:
+            out["기간 유형: " + k] = c
+    return out
 
 
 def build_sources(store: Store, sources, batch_id: str, include_manual: bool) -> list[dict]:
@@ -50,6 +76,7 @@ def build_sources(store: Store, sources, batch_id: str, include_manual: bool) ->
                 "collected": r["collected"] if ok else None,
                 "new": r["new"] if ok else None,
                 "changed": r["changed"] if ok else None,
+                "reclassified": r["reclassified"] if ok else None,
                 "error": (r["error"] or None) if r is not None and not ok else None,
                 "last_success_at": store.last_success(info.key),
                 "attempts": len(store.attempts(batch_id, info.key)),
@@ -57,9 +84,6 @@ def build_sources(store: Store, sources, batch_id: str, include_manual: bool) ->
             },
         })
     return out
-
-
-STATUS_ORDER = ["접수중", "신청예정", "상시", "기간 확인 필요", "마감"]
 
 
 def status_counts(notices: list[dict], today: str) -> dict:
@@ -95,6 +119,7 @@ def export(store: Store, sources, batch_id: str, out_dir: str | Path, *, include
         "notices": notices,
     }
     data["meta"]["status_counts"] = status_counts(notices, batch_id)
+    data["meta"]["review_summary"] = review_summary(notices, batch_id)
     validate(data)
     (out / "latest.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     today = batch_id
@@ -159,13 +184,18 @@ def summary_md(data: dict) -> str:
     m = data["meta"]
     lines = [f"# 실행 결과 요약 — {m['batch_id']}", "", f"- 배치 상태: **{m['batch_status']}**",
              f"- 생성 시각: {m['generated_at']}", f"- 누적 공고: {len(data['notices'])}건 (마감 포함, 삭제하지 않고 보관)",
-             f"- 기준일 {m['reference_date']} 신청 상태: " + " · ".join(f"{k} {m['status_counts'][k]}건" for k in STATUS_ORDER),
-             "", "| 출처 | 상태 | 수집 | 신규 | 변경 | 오류 | 마지막 성공 |", "|---|---|---:|---:|---:|---|---|"]
+             f"- 기준일 {m['reference_date']} 신청 상태: " + " · ".join(f"{k} {m['status_counts'].get(k, 0)}건" for k in STATUS_ORDER),
+             "- 확인 현황(분류 성공 ≠ 확인 완료): " + " · ".join(
+                 f"{k} {v}건" for k, v in m.get("review_summary", {}).items() if not k.startswith("기간 유형")),
+             "- 신청기간 유형: " + " · ".join(
+                 f"{k[7:]} {v}건" for k, v in m.get("review_summary", {}).items() if k.startswith("기간 유형")),
+             "", "| 출처 | 상태 | 수집 | 신규 | 공고 변경 | 분류 규칙 변경 | 오류 | 마지막 성공 |",
+             "|---|---|---:|---:|---:|---:|---|---|"]
     for s in data["sources"]:
         r = s["run"]
         na = "집계 안 됨"
-        lines.append(f"| {s['name']} | {r['status']} | {r['collected'] if r['collected'] is not None else na} | "
-                     f"{r['new'] if r['new'] is not None else na} | {r['changed'] if r['changed'] is not None else na} | "
+        f = lambda k: r.get(k) if r.get(k) is not None else na
+        lines.append(f"| {s['name']} | {r['status']} | {f('collected')} | {f('new')} | {f('changed')} | {f('reclassified')} | "
                      f"{(r['error'] or '').replace('|', '/')} | {r['last_success_at'] or '없음'} |")
     if m["batch_status"] == "실패":
         lines += ["", "> 성공한 출처가 없습니다. 정상 완료가 아닙니다."]

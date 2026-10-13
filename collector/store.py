@@ -9,7 +9,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from .models import Item, content_hash, diff, iso
+from .models import SOURCE_FIELDS, Item, content_hash, diff, iso
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS notices (
@@ -59,6 +59,10 @@ class Store:
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        # 기존 DB에 없는 열을 추가(데이터는 그대로 유지)
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(runs)")}
+        if "reclassified" not in cols:
+            self.db.execute("ALTER TABLE runs ADD COLUMN reclassified INTEGER")
 
     def close(self):
         self.db.commit()
@@ -83,18 +87,35 @@ class Store:
         if row["content_hash"] == h:
             old["last_checked_at"] = t
             old.get("flags", {}).pop("not_seen_since", None)
+            if rec.get("flags", {}).get("source_digest"):
+                old.setdefault("flags", {})["source_digest"] = rec["flags"]["source_digest"]
             self.db.execute("UPDATE notices SET record_json=?, last_checked_at=?, last_batch=? WHERE id=?",
                             (json.dumps(old, ensure_ascii=False), t, batch_id, row["id"]))
             return "same"
         changes = diff(old, rec)
-        rec.update(first_seen_at=old["first_seen_at"], last_checked_at=t, last_changed_at=t,
-                   changed_fields=[c["field"] for c in changes] or ["needs_review_fields"])
-        rec["flags"] = {**{k: v for k, v in old.get("flags", {}).items() if k != "not_seen_since"},
-                        "review_reset_at": t}   # 내용이 바뀌면 화면의 검토 상태를 미검토로 되돌림
-        self.db.execute("UPDATE notices SET record_json=?, content_hash=?, last_checked_at=?, last_changed_at=?, last_batch=? WHERE id=?",
-                        (json.dumps(rec, ensure_ascii=False), h, t, t, batch_id, row["id"]))
-        self._version(row["id"], batch_id, t, "내용 변경 감지", changes, rec)
-        return "changed"
+        old_flags = {k: v for k, v in old.get("flags", {}).items() if k != "not_seen_since"}
+        od, nd = old_flags.get("source_digest"), rec.get("flags", {}).get("source_digest")
+        if od and nd:
+            official = od != nd                       # 출처 원본이 바뀌었는가
+        else:
+            official = any(c["field"] in SOURCE_FIELDS for c in changes)   # 원본 요약값이 없던 기존 행
+        if official:
+            rec.update(first_seen_at=old["first_seen_at"], last_checked_at=t, last_changed_at=t,
+                       changed_fields=[c["field"] for c in changes] or ["needs_review_fields"])
+            rec["flags"] = {**old_flags, **rec.get("flags", {}),
+                            "review_reset_at": t}   # 공고 내용이 바뀌면 화면의 검토 상태를 미검토로 되돌림
+            self.db.execute("UPDATE notices SET record_json=?, content_hash=?, last_checked_at=?, last_changed_at=?, last_batch=? WHERE id=?",
+                            (json.dumps(rec, ensure_ascii=False), h, t, t, batch_id, row["id"]))
+            self._version(row["id"], batch_id, t, "공고 내용 변경", changes, rec)
+            return "changed"
+        # 원본은 같고 분류 결과만 다름 → '분류 규칙 변경'. 공고 변경 시각·검토 상태는 그대로 둔다
+        rec.update(first_seen_at=old["first_seen_at"], last_checked_at=t,
+                   last_changed_at=old.get("last_changed_at"), changed_fields=old.get("changed_fields", []))
+        rec["flags"] = {**old_flags, **rec.get("flags", {}), "rule_changed_at": t}
+        self.db.execute("UPDATE notices SET record_json=?, content_hash=?, last_checked_at=?, last_batch=? WHERE id=?",
+                        (json.dumps(rec, ensure_ascii=False), h, t, batch_id, row["id"]))
+        self._version(row["id"], batch_id, t, "분류 규칙 변경", changes, rec)
+        return "reclassified"
 
     def mark_unseen(self, source_key: str, seen_ids: set[str], batch_id: str):
         """성공한 수집에서 보이지 않은 공고. 삭제·마감 처리하지 않고 표시만 한다."""
@@ -134,10 +155,10 @@ class Store:
         return n
 
     def finish_run(self, batch_id, source_key, attempt, now, *, status, fetched_raw=None, collected=None,
-                   new=None, changed=None, skipped=None, error=None):
+                   new=None, changed=None, skipped=None, error=None, reclassified=None):
         self.db.execute("""UPDATE runs SET status=?, finished_at=?, fetched_raw=?, collected=?, new=?, changed=?,
-                           skipped_json=?, error=? WHERE batch_id=? AND source_key=? AND attempt=?""",
-                        (status, iso(now), fetched_raw, collected, new, changed,
+                           reclassified=?, skipped_json=?, error=? WHERE batch_id=? AND source_key=? AND attempt=?""",
+                        (status, iso(now), fetched_raw, collected, new, changed, reclassified,
                          json.dumps(skipped, ensure_ascii=False) if skipped else None, error,
                          batch_id, source_key, attempt))
         self.db.commit()

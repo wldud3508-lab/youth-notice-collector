@@ -50,7 +50,7 @@ def run_source(store: Store, src, batch_id: str, *, force: bool, log=print) -> N
         if os.getenv("DEBUG"):
             traceback.print_exc()
         return
-    counts = {"new": 0, "changed": 0, "same": 0}
+    counts = {"new": 0, "changed": 0, "same": 0, "reclassified": 0}
     now = now_kst()
     seen = set()
     for it in result.items:
@@ -58,8 +58,10 @@ def run_source(store: Store, src, batch_id: str, *, force: bool, log=print) -> N
         seen.add(it.source_id)
     store.mark_unseen(key, seen, batch_id)
     store.finish_run(batch_id, key, attempt, now_kst(), status="성공", fetched_raw=result.fetched_raw,
-                     collected=len(result.items), new=counts["new"], changed=counts["changed"], skipped=result.skipped)
-    log(f"[{key}] 성공: 받은 {result.fetched_raw}건 중 대상 {len(result.items)}건 (신규 {counts['new']}, 변경 {counts['changed']})")
+                     collected=len(result.items), new=counts["new"], changed=counts["changed"],
+                     reclassified=counts["reclassified"], skipped=result.skipped)
+    log(f"[{key}] 성공: 받은 {result.fetched_raw}건 중 대상 {len(result.items)}건 "
+        f"(신규 {counts['new']}, 공고 변경 {counts['changed']}, 분류 규칙 변경 {counts['reclassified']})")
 
 
 class ManualSource:

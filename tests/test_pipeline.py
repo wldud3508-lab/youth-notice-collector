@@ -40,13 +40,39 @@ def test_rerun_same_day_no_duplicates_and_skip(tmp_path):
 
 def test_change_detection_records_history(tmp_path):
     st = Store(tmp_path / "t.db")
-    run_source(st, FakeSource("a", [item("a", "1")]), "2026-10-12", force=False, log=lambda *_: None)
-    run_source(st, FakeSource("a", [item("a", "1", apply_end="2026-11-07")]), "2026-10-13", force=False, log=lambda *_: None)
+    run_source(st, FakeSource("a", [item("a", "1", period_text="10. 1. ~ 10. 31.")]), "2026-10-12", force=False, log=lambda *_: None)
+    run_source(st, FakeSource("a", [item("a", "1", period_text="10. 1. ~ 11. 7.", apply_end="2026-11-07")]), "2026-10-13",
+               force=False, log=lambda *_: None)
     rec = st.all_records()[0]
-    assert rec["changed_fields"] == ["apply_end"]
-    assert rec["history"][0]["changes"] == [{"field": "apply_end", "before": "2026-10-31", "after": "2026-11-07"}]
-    assert rec["first_seen_at"][:10] != rec["last_changed_at"][:10] or True
+    assert set(rec["changed_fields"]) == {"apply_end", "period_text"}
+    assert {"field": "apply_end", "before": "2026-10-31", "after": "2026-11-07"} in rec["history"][0]["changes"]
+    assert rec["history"][0]["note"] == "공고 내용 변경"
     assert "review_reset_at" in rec["flags"]
+
+
+def test_rule_only_change_is_not_official_change(tmp_path):
+    """원문(period_text)은 같고 분류 결과만 달라지면 '분류 규칙 변경' — 공고 변경으로 표시하지 않음."""
+    st = Store(tmp_path / "t.db")
+    src = lambda **f: FakeSource("a", [item("a", "1", period_text="매년 3~4월", apply_start=None, apply_end=None, **f)])
+    run_source(st, src(), "2026-10-12", force=False, log=lambda *_: None)
+    run_source(st, src(period_kind="매년·정기 반복"), "2026-10-13", force=False, log=lambda *_: None)
+    rec = st.all_records()[0]
+    assert rec["period_kind"] == "매년·정기 반복"
+    assert rec["last_changed_at"] is None and rec["changed_fields"] == []
+    assert "review_reset_at" not in rec["flags"] and "rule_changed_at" in rec["flags"]
+    assert rec["history"][0]["note"] == "분류 규칙 변경"
+    run = st.latest_run("2026-10-13", "a")
+    assert (run["changed"], run["reclassified"]) == (0, 1)
+
+
+def test_source_digest_decides_official_change(tmp_path):
+    st = Store(tmp_path / "t.db")
+    mk = lambda d, **f: FakeSource("a", [Item("a", "TEST-a", "1", None, None, {"category": "생활비", "title": "T", **f}, source_digest=d)])
+    run_source(st, mk("d1"), "2026-10-11", force=False, log=lambda *_: None)
+    run_source(st, mk("d1", period_kind="상시"), "2026-10-12", force=False, log=lambda *_: None)   # 원본 같음
+    assert st.latest_run("2026-10-12", "a")["reclassified"] == 1
+    run_source(st, mk("d2", period_kind="상시", benefit_text="변경"), "2026-10-13", force=False, log=lambda *_: None)
+    assert st.latest_run("2026-10-13", "a")["changed"] == 1
 
 
 def test_failure_isolated_and_not_zero(tmp_path):

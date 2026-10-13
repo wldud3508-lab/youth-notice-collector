@@ -235,6 +235,7 @@ textarea.csv{width:100%;min-height:180px;font-family:var(--font-mono);font-size:
       <div class="sel"><label for="fSource">출처</label><select id="fSource"></select></div>
       <div class="sel"><label for="fRegion">지역</label><select id="fRegion"></select></div>
       <div class="sel"><label for="fStatus">신청 상태</label><select id="fStatus"></select></div>
+      <div class="sel"><label for="fKind">신청기간 유형</label><select id="fKind"></select></div>
       <div class="sel"><label for="fDeadline">마감일</label><select id="fDeadline"></select></div>
       <div class="sel"><label for="fReview">검토 상태</label><select id="fReview"></select></div>
       <button class="reset" id="btnReset" type="button">필터 초기화</button>
@@ -304,7 +305,13 @@ const EXTRA_DEFS = {
 EXTRA_DEFS["주거비"] = EXTRA_DEFS["생활비"];
 const CATS = ["공모전","장학금","생활비","주거비"];
 const CAT_COLOR = {"공모전":"var(--c-contest)","장학금":"var(--c-scholar)","생활비":"var(--c-living)","주거비":"var(--c-housing)"};
-const STATUSES = ["접수중","신청예정","기간 확인 필요","상시","마감"];
+const ST_ELAPSED = "표기된 일정 경과(월 단위)", ST_CLOSED_TEXT = "종료 명시(원문)", ST_NO_APPLY = "신청 절차 없음(원문)";
+const STATUSES = ["접수중","신청예정","상시",ST_NO_APPLY,"기간 확인 필요",ST_ELAPSED,ST_CLOSED_TEXT,"마감"];
+/* 신청기간 유형(원문 기준 사유). 사유가 분류돼도 실제 신청기간 확인은 별개 */
+const PERIOD_KINDS = ["기간 명시","상시","신청 절차 없음","원문에 종료 명시","종료 표현(작성 연도 미확인)","사유 발생 후 기한",
+  "기관·유형별 일정 상이","연도 있는 월 단위","별도 공고 확인","매년·정기 반복","예산 소진 등 조건부","신청기간 여러 개","원문 날짜 오류","원문 기간 미기재","분류 안 됨"];
+/* 오늘 검토 후보에서 빼는 중요한 충돌(대상·혜택·기간) */
+const BLOCKING = ["apply_start","apply_end","age_condition","amount_text","target_text","benefit_text","중복 여부"];
 const REVIEWS = ["미검토","검토완료","제외"];
 
 /* ------------------------- 상태 ------------------------- */
@@ -322,28 +329,46 @@ function reviewOf(n){
   return o ? o.status : (n.review_status || "미검토");
 }
 
-const state = { view:"all", q:"", cats:new Set(), source:"", region:"", status:"", deadline:"", review:"", sort:"priority", selected:null, mobileOpen:false };
+const state = { view:"candidates", q:"", cats:new Set(), source:"", region:"", status:"", kind:"", deadline:"", review:"", sort:"priority", selected:null, mobileOpen:false };
 
 /* ------------------------- 날짜·상태 계산 ------------------------- */
 const dayMs = 86400000;
 const toDay = s => s ? new Date(s.slice(0,10)+"T00:00:00Z").getTime() : null;
 const dateOf = iso => iso ? iso.slice(0,10) : null;
 function daysLeft(n){ return n.apply_end ? Math.round((toDay(n.apply_end)-toDay(TODAY))/dayMs) : null; }
+/* 수집기 collector/rules.py 의 apply_status 와 같은 규칙 */
 function applyStatus(n){
   if (n.apply_status_override) return n.apply_status_override;
   const t = toDay(TODAY), s = toDay(n.apply_start), e = toDay(n.apply_end);
-  if (!s && !e) return n.info_type === "상시 제도 안내" ? "상시" : "기간 확인 필요";
-  if (s && t < s) return "신청예정";
-  if (e && t > e) return "마감";
-  return "접수중";
+  if (s || e){
+    if (s && t < s) return "신청예정";
+    if (e && t > e) return "마감";
+    return "접수중";
+  }
+  const k = n.period_kind;
+  if (k === "상시" || (k == null && n.info_type === "상시 제도 안내")) return "상시";
+  if (k === "신청 절차 없음") return ST_NO_APPLY;
+  if (k === "원문에 종료 명시" && n.period_closed_year && n.period_closed_year >= +TODAY.slice(0,4)) return ST_CLOSED_TEXT;
+  if (k === "연도 있는 월 단위" && n.period_month_end && n.period_month_end < TODAY.slice(0,7)) return ST_ELAPSED;
+  return "기간 확인 필요";
 }
 const isNew = n => dateOf(n.first_seen_at) === TODAY;
-const isChanged = n => !isNew(n) && dateOf(n.last_changed_at) === TODAY;
+const isChanged = n => !isNew(n) && dateOf(n.last_changed_at) === TODAY;   // 공고 원문 변경만(분류 규칙 변경 제외)
 const isSoon = n => applyStatus(n) === "접수중" && daysLeft(n) !== null && daysLeft(n) <= 7;
-const needsCheck = n => (n.needs_review_fields||[]).length > 0 || (n.conflicts||[]).length > 0 || applyStatus(n) === "기간 확인 필요";
+const hasRequired = n => (n.needs_review_fields||[]).length > 0 || (n.conflicts||[]).length > 0;
+const needsCheck = n => hasRequired(n) || applyStatus(n) === "기간 확인 필요";
 const sourceNames = n => (n.sources||[]).map(s => s.site);
+/* 오늘 검토할 후보: 청년 관련 확인 + 신청기간이 명확한 접수중·신청예정 + 중요한 충돌 없음 + 제외 아님 */
+function isCandidate(n){
+  if (reviewOf(n) === "제외" || n.youth_relevant !== true) return false;
+  const st = applyStatus(n);
+  if ((st !== "접수중" && st !== "신청예정") || !n.apply_end) return false;
+  if ((n.conflicts||[]).some(c => BLOCKING.includes(c.field))) return false;
+  return !(n.needs_review_fields||[]).some(f => BLOCKING.includes(f));
+}
 
 const VIEWS = [
+  ["candidates","오늘 검토 후보", isCandidate],
   ["all","전체", () => true],
   ["new","오늘 신규", isNew],
   ["changed","오늘 변경", isChanged],
@@ -374,9 +399,10 @@ function statusHTML(n){
     const cls = d !== null && d <= 7 ? "s-soon" : "s-open";
     return `<span class="status ${cls}">접수중${d!==null ? ` · ${d===0?"오늘 마감":"D-"+d}` : " · 마감일 미기재"}</span>`;
   }
-  const map = {"신청예정":"s-up","마감":"s-closed","기간 확인 필요":"s-unk","상시":"s-always"};
+  const map = {"신청예정":"s-up","마감":"s-closed","기간 확인 필요":"s-unk","상시":"s-always",[ST_NO_APPLY]:"s-always",[ST_ELAPSED]:"s-closed",[ST_CLOSED_TEXT]:"s-closed"};
   let extra = "";
   if (st === "신청예정" && n.apply_start){ const k = Math.round((toDay(n.apply_start)-toDay(TODAY))/dayMs); extra = ` · ${k}일 후 시작`; }
+  if (st === "기간 확인 필요" && n.period_kind) extra = ` · ${n.period_kind}`;
   return `<span class="status ${map[st]||""}">${esc(st)}${extra}</span>`;
 }
 function toast(msg){ const t = document.createElement("div"); t.className="toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 2400); }
@@ -389,6 +415,7 @@ function baseFiltered(){
     if (state.source && !sourceNames(n).includes(state.source)) return false;
     if (state.region && n.region !== state.region && !(state.region==="__none" && !n.region)) return false;
     if (state.status && applyStatus(n) !== state.status) return false;
+    if (state.kind && (n.period_kind || "") !== state.kind) return false;
     if (state.review && reviewOf(n) !== state.review) return false;
     if (state.deadline){
       const d = daysLeft(n), st = applyStatus(n);
@@ -404,9 +431,15 @@ function baseFiltered(){
     return true;
   });
 }
-const PRI = {"접수중":0,"신청예정":1,"기간 확인 필요":2,"상시":3,"마감":4};
+const PRI = {"접수중":0,"신청예정":1,"기간 확인 필요":2,"상시":3,[ST_NO_APPLY]:3,[ST_ELAPSED]:4,[ST_CLOSED_TEXT]:4,"마감":4};
 function sorted(list){
   const arr = list.slice();
+  if (state.view === "candidates" && state.sort === "priority"){
+    // 후보: 오늘 신규·공고 변경 먼저, 그다음 마감이 빠른 순
+    const fresh = n => (isNew(n) || isChanged(n)) ? 0 : 1;
+    const dk = n => n.apply_end ? toDay(n.apply_end) : Infinity;
+    return arr.sort((a,b) => fresh(a)-fresh(b) || dk(a)-dk(b));
+  }
   if (state.sort === "seen") return arr.sort((a,b) => (b.first_seen_at||"").localeCompare(a.first_seen_at||""));
   const dk = n => n.apply_end ? toDay(n.apply_end) : (n.apply_start ? toDay(n.apply_start) : Infinity);
   if (state.sort === "deadline") return arr.sort((a,b) => dk(a)-dk(b));
@@ -440,6 +473,8 @@ function renderFilters(){
   const regions = [...new Set(DATA.notices.map(n=>n.region).filter(Boolean))].sort((a,b)=> a==="전국"?-1:b==="전국"?1:a.localeCompare(b,"ko"));
   fillSelect("fRegion", [["","전체"], ...regions.map(r=>[r,r]), ["__none","지역 미기재"]], state.region);
   fillSelect("fStatus", [["","전체"], ...STATUSES.map(s=>[s,s])], state.status);
+  const kinds = PERIOD_KINDS.filter(k => DATA.notices.some(n => n.period_kind === k));
+  fillSelect("fKind", [["","전체"], ...kinds.map(k=>[k,k])], state.kind);
   fillSelect("fDeadline", [["","전체"],["7","7일 이내 마감"],["30","30일 이내 마감"],["past","마감일 지남"],["none","마감일 미기재"]], state.deadline);
   fillSelect("fReview", [["","전체"], ...REVIEWS.map(s=>[s,s])], state.review);
 }
@@ -455,9 +490,11 @@ function rowHTML(n){
   if (DATA.meta.mode === "sample") tags.push(`<span class="tag t-sample">샘플</span>`);
   if (isNew(n)) tags.push(`<span class="tag t-new">오늘 신규</span>`);
   if (isChanged(n)) tags.push(`<span class="tag t-chg">오늘 변경</span>`);
-  if ((n.conflicts||[]).length) tags.push(`<span class="tag t-bad">출처 간 충돌</span>`);
+  if ((n.conflicts||[]).length) tags.push(`<span class="tag t-bad">원문 충돌</span>`);
   if ((n.needs_review_fields||[]).includes("중복 여부")) tags.push(`<span class="tag t-warn">중복 확인</span>`);
   else if (needsCheck(n)) tags.push(`<span class="tag t-warn">확인 필요</span>`);
+  else if ((n.review_notes||[]).length) tags.push(`<span class="tag t-plain">참고사항</span>`);
+  if (n.flags && n.flags.rule_changed_at && dateOf(n.flags.rule_changed_at) === TODAY) tags.push(`<span class="tag t-plain">분류 규칙 변경</span>`);
   if (n.support_type === "대출") tags.push(`<span class="tag t-plain">대출</span>`);
   if (n.support_type === "이자지원") tags.push(`<span class="tag t-plain">이자지원</span>`);
   if (n.info_type === "상시 제도 안내") tags.push(`<span class="tag t-plain">상시 제도</span>`);
@@ -507,6 +544,11 @@ function supportDisplay(n){
 }
 function amountDisplay(n){
   if (!n.amount_text) return nullCell(n,"amount_text");
+  const items = n.amount_items || [];
+  if (items.length > 1){
+    return `<div class="note">원문 금액 ${items.length}개를 항목별로 정리했습니다(대표 금액으로 합치지 않음).</div>` +
+      items.map(i => `<div>${i.label?`<span class="note">${esc(i.label)}</span> `:""}<b>${esc(i.text)}</b>${[i.qualifier,i.period&&i.period+" 단위"].filter(Boolean).length?` <span class="note mono">(${esc([i.qualifier,i.period&&i.period+" 단위"].filter(Boolean).join(" · "))})</span>`:""}</div>`).join("");
+  }
   const parts = [];
   if (n.amount_qualifier) parts.push(n.amount_qualifier);
   if (n.amount_period) parts.push(n.amount_period + " 단위");
@@ -523,10 +565,17 @@ function renderDetail(){
   const ovr = (reviewOverrides[scopeKey()]||{})[n.id];
   const alerts = [];
   if (DATA.meta.mode === "sample") alerts.push(`<div class="alert info"><b>샘플 공고</b>가상의 기관·금액·날짜입니다. 콘텐츠 제작에 사용하지 마세요.</div>`);
-  (n.conflicts||[]).forEach(c => alerts.push(`<div class="alert bad"><b>출처 간 내용 충돌 — ${esc(LABELS[c.field]||c.field)}</b>${c.values.map(v=>`${esc(v.site)}: ${esc(v.value)}`).join(" / ")}<span class="note">주최기관 공식 공고로 확인할 때까지 어느 값도 확정하지 않습니다.</span></div>`));
+  (n.conflicts||[]).forEach(c => alerts.push(`<div class="alert bad"><b>필수 확인 · 원문 간 충돌 — ${esc(LABELS[c.field]||c.field)}</b>${c.values.map(v=>`${esc(v.site)}: ${esc(v.value)}`).join(" / ")}<span class="note">주최기관 공식 공고로 확인할 때까지 어느 값도 확정하지 않습니다.</span></div>`));
   const nr = (n.needs_review_fields||[]).filter(f => !(n.conflicts||[]).some(c=>c.field===f));
-  if (nr.length) alerts.push(`<div class="alert warn"><b>확인 필요 항목</b>${nr.map(f=>esc(LABELS[f]||f)).join(", ")}</div>`);
-  if (applyStatus(n) === "기간 확인 필요") alerts.push(`<div class="alert warn"><b>기간 확인 필요</b>신청기간이 확정되지 않아 원문 표현을 그대로 보존했습니다.</div>`);
+  const nrOther = nr.filter(f => f !== "apply_start" && f !== "apply_end");
+  if (nrOther.length) alerts.push(`<div class="alert warn"><b>필수 확인 항목</b>${nrOther.map(f=>esc(LABELS[f]||f)).join(", ")}</div>`);
+  const stD = applyStatus(n);
+  if (stD === "기간 확인 필요") alerts.push(`<div class="alert warn"><b>신청기간 확인 필요${n.period_kind?` — 유형: ${esc(n.period_kind)}`:""}</b>원문에 이번 신청기간이 확정돼 있지 않아 날짜를 만들지 않았습니다. 사유가 분류돼도 실제 기간은 원문에서 확인해야 합니다.</div>`);
+  if (stD === ST_ELAPSED) alerts.push(`<div class="alert warn"><b>${ST_ELAPSED}</b>원문에 적힌 연도·끝 달(${esc(n.period_month_end)})이 기준일보다 지났습니다. 실제 모집 종료가 확정된 것은 아니며, 일자는 원문에 없습니다.</div>`);
+  if (stD === ST_CLOSED_TEXT) alerts.push(`<div class="alert info"><b>${ST_CLOSED_TEXT}</b>원문에 ${esc(n.period_closed_year)}년 모집 종료(또는 미모집)가 명시돼 있습니다.</div>`);
+  if (stD === "상시") alerts.push(`<div class="alert info"><b>상시 표기</b>원문이 ‘상시’로 적혀 있을 뿐, 지금 실제로 접수 가능한지는 원문에서 확인해야 합니다.</div>`);
+  if ((n.period_flags||[]).length) alerts.push(`<div class="alert info"><b>신청기간 참고</b>${(n.period_flags||[]).map(esc).join(" · ")}</div>`);
+  if ((n.review_notes||[]).length) alerts.push(`<div class="alert info"><b>참고사항(필수 확인 아님)</b>${n.review_notes.map(x=>`${esc(LABELS[x.field]||x.field)}: ${esc(x.note)}`).join("<br>")}</div>`);
   if (n.flags && n.flags.merged) alerts.push(`<div class="alert info"><b>여러 출처 연결됨</b>${esc(n.flags.merged)}</div>`);
 
   const extras = (EXTRA_DEFS[n.category]||[]).map(([k,l]) => {
@@ -544,7 +593,7 @@ function renderDetail(){
     return `<div class="link-row"><span class="lk">${esc(r.type)}</span>${link}${r.note?`<span class="note">${esc(r.note)}</span>`:""}</div>`;
   }).join("");
 
-  const hist = (n.history||[]).map(h => `<li><div class="tl-head mono">${esc(fmtTime(h.at)||"")} · ${esc(h.batch||"")}</div><div>${esc(h.note||"")}</div>${(h.changes||[]).map(c=>`<div class="diff"><b>${esc(LABELS[c.field]||c.field)}</b>: <del>${esc(c.before ?? "없음")}</del> → <ins>${esc(c.after ?? "없음")}</ins></div>`).join("")}</li>`).join("");
+  const hist = (n.history||[]).map(h => `<li><div class="tl-head mono">${esc(fmtTime(h.at)||"")} · ${esc(h.batch||"")}</div><div>${h.note==="분류 규칙 변경"?`<span class="tag t-plain">분류 규칙 변경</span> 공고 원문은 그대로이고 정리 규칙만 바뀌었습니다`:esc(h.note||"")}</div>${(h.changes||[]).map(c=>`<div class="diff"><b>${esc(LABELS[c.field]||c.field)}</b>: <del>${esc(c.before ?? "없음")}</del> → <ins>${esc(c.after ?? "없음")}</ins></div>`).join("")}</li>`).join("");
 
   el.innerHTML = `<div class="detail-inner">
     <div>
@@ -588,6 +637,7 @@ function renderDetail(){
 
     <div><h3 class="sec">신청</h3><table class="fields"><tbody>
       ${fieldRow(n,"period_text")}
+      <tr><th scope="row">신청기간 유형</th><td>${n.period_kind?esc(n.period_kind):`<span class="null">미분류</span>`}</td></tr>
       ${fieldRow(n,"apply_start",null,n.apply_start?esc(fmtDate(n.apply_start)):nullCell(n,"apply_start"))}
       ${fieldRow(n,"apply_end",null,n.apply_end?esc(fmtDate(n.apply_end)):nullCell(n,"apply_end"))}
       ${fieldRow(n,"apply_end_time")}
@@ -724,11 +774,11 @@ function render(){
 $("viewTabs").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (!b) return; state.view = b.dataset.view; state.mobileOpen = false; render(); });
 $("catChips").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (!b) return; const c = b.dataset.cat; state.cats.has(c)?state.cats.delete(c):state.cats.add(c); render(); });
 $("q").addEventListener("input", e => { state.q = e.target.value; renderTabs(); renderList(); });
-[["fSource","source"],["fRegion","region"],["fStatus","status"],["fDeadline","deadline"],["fReview","review"]].forEach(([id,k]) =>
+[["fSource","source"],["fRegion","region"],["fStatus","status"],["fKind","kind"],["fDeadline","deadline"],["fReview","review"]].forEach(([id,k]) =>
   $(id).addEventListener("change", e => { state[k] = e.target.value; render(); }));
 $("sort").addEventListener("change", e => { state.sort = e.target.value; renderList(); });
 $("statusBar").addEventListener("click", e => { const b = e.target.closest("[data-st]"); if (!b) return; state.status = state.status === b.dataset.st ? "" : b.dataset.st; render(); });
-$("btnReset").addEventListener("click", () => { Object.assign(state,{q:"",source:"",region:"",status:"",deadline:"",review:""}); state.cats.clear(); $("q").value=""; render(); });
+$("btnReset").addEventListener("click", () => { Object.assign(state,{q:"",source:"",region:"",status:"",kind:"",deadline:"",review:""}); state.cats.clear(); $("q").value=""; render(); });
 function select(id){ state.selected = id; state.mobileOpen = true; renderList(); const d = $("detail"); if (d.scrollTo) d.scrollTo(0,0); }
 $("list").addEventListener("click", e => { const r = e.target.closest("[data-id]"); if (r) select(r.dataset.id); });
 $("list").addEventListener("keydown", e => { if ((e.key==="Enter"||e.key===" ") && e.target.dataset.id){ e.preventDefault(); select(e.target.dataset.id); } });
@@ -774,6 +824,10 @@ const CSV_COLS = [
   ["변경된 항목", n => (n.changed_fields||[]).join(" | ")||null],["확인 필요 항목", n => (n.needs_review_fields||[]).join(" | ")||null],
   ["출처 간 충돌", n => (n.conflicts||[]).map(c=>`${c.field}: ${c.values.map(v=>v.site+"="+v.value).join(" / ")}`).join(" | ")||null],
   ["검토 상태", n => reviewOf(n)],
+  ["신청기간 유형", "period_kind"],
+  ["신청기간 참고", n => (n.period_flags||[]).join(" | ")||null],
+  ["참고사항", n => (n.review_notes||[]).map(x=>`${x.field}: ${x.note}`).join(" | ")||null],
+  ["금액 항목", n => (n.amount_items||[]).map(i=>(i.label?i.label+" ":"")+i.text).join(" | ")||null],
   ...[...new Set(Object.values(EXTRA_DEFS).flat().map(x=>x[0]))].map(k => {
     const label = Object.values(EXTRA_DEFS).flat().find(x=>x[0]===k)[1];
     return ["[추가] "+label, n => n.extra ? (n.extra[k] ?? null) : null];
