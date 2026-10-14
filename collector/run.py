@@ -50,20 +50,23 @@ def run_source(store: Store, src, batch_id: str, *, force: bool, log=print) -> N
         if os.getenv("DEBUG"):
             traceback.print_exc()
         return
-    counts = {"new": 0, "changed": 0, "same": 0, "reclassified": 0}
-    backfilled = 0
+    counts = {"new": 0, "changed": 0, "same": 0, "reclassified": 0, "meta_changed": 0}
+    backfilled = unverified = 0
     now = now_kst()
     seen = set()
     for it in result.items:
         counts[store.upsert(it, batch_id, now)] += 1
         backfilled += store.last_backfilled
+        unverified += store.last_unverified
         seen.add(it.source_id)
     store.mark_unseen(key, seen, batch_id)
     store.finish_run(batch_id, key, attempt, now_kst(), status="성공", fetched_raw=result.fetched_raw,
                      collected=len(result.items), new=counts["new"], changed=counts["changed"],
-                     reclassified=counts["reclassified"], raw_backfilled=backfilled, skipped=result.skipped)
+                     reclassified=counts["reclassified"], raw_backfilled=backfilled,
+                     meta_changed=counts["meta_changed"], unverified=unverified, skipped=result.skipped)
     log(f"[{key}] 성공: 받은 {result.fetched_raw}건 중 대상 {len(result.items)}건 "
-        f"(신규 {counts['new']}, 공고 변경 {counts['changed']}, 분류 규칙 변경 {counts['reclassified']}, "
+        f"(신규 {counts['new']}, 중요 원문 변경 {counts['changed']}(그중 변경 항목 확인 불가 {unverified}), "
+        f"원본 메타데이터 변경 {counts['meta_changed']}, 분류 규칙 변경 {counts['reclassified']}, "
         f"원문 보완(데이터 이전) {backfilled})")
 
 
@@ -118,6 +121,9 @@ def main(argv=None) -> int:
 
     batch_id = args.batch or now_kst().date().isoformat()
     store = Store(args.db)
+    n_unv = store.migrate_unverified_backfill(now_kst())   # 1회성: 이미 했으면 0
+    if n_unv:
+        print(f"[데이터 점검] 원본 첫 보관 때 이전 요약값과 달랐던 공고 {n_unv}건을 '변경 항목 확인 불가'로 표시")
     sources = build_sources()
     manual_path = ROOT / "manual" / "notices.json"
     manual = ManualSource(manual_path) if manual_path.exists() else None

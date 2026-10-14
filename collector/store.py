@@ -11,8 +11,6 @@ from pathlib import Path
 
 from .models import SOURCE_FIELDS, Item, content_hash, diff, iso
 
-NOTE_BACKFILL = "원문 보완(데이터 이전)"   # 원본 전체를 처음 보관 — 공고 변경 아님
-
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS notices (
   id TEXT PRIMARY KEY,
@@ -64,6 +62,46 @@ CREATE TABLE IF NOT EXISTS runs (
 """
 
 
+# ------------------------------------------------------------------ 원본 비교 규칙
+# 비교에서 아예 제외(변경으로 기록하지 않음). 조회수는 원본 보관 단계에서 이미 뺀다.
+RAW_IGNORED = {"조회수"}
+# 비핵심 메타데이터: 이것만 바뀌면 '원본 메타데이터 변경'(검토 상태 유지)
+RAW_META = {"수정일시", "등록일시", "소관기관코드"}
+# 그 밖의 항목(지원대상·선정기준·지원내용·신청기한·신청방법·구비서류·지원조건 코드 등)은 모두 핵심으로 본다.
+# 목록에 없는 항목도 중요하지 않다고 추정하지 않는다.
+
+NOTE_NEW = "최초 수집"
+NOTE_BACKFILL = "원문 보완(데이터 이전)"            # 원본 전체를 처음 보관 — 공고 변경 아님
+NOTE_RULE = "분류 규칙 변경"                        # 원본 같음, 정리 결과만 다름
+NOTE_CORE = "중요 원문 변경"                        # 핵심 항목 변경 → 미검토로
+NOTE_META = "원본 메타데이터 변경"                  # 수정일시 등만 변경 → 검토 상태 유지
+NOTE_UNKNOWN = "원본 변경 — 변경 항목 확인 불가"     # 이전 원본이 없어 비교 불가 → 미검토 + 추가 검토
+NOTE_UNVERIFIED = "이전 요약값과 차이 있음 — 이전 원문 미보관으로 변경 항목 확인 불가"
+NOTE_DISPLAY = "공고 내용 변경"                     # 원본 요약값 없이 화면용 원문 필드로만 판단(다른 출처·수동 입력)
+REVIEW_FLAG_FIELD = "원본 변경 확인"                # needs_review_fields 에 넣는 추가 검토 표시
+TRANSIENT_FLAGS = ("clipped_fields",)               # 매 실행 갱신, 변경 이력에 남기지 않음
+
+
+def _cmp_hash(rec: dict) -> str:
+    """정리 결과 비교용 해시. 사람이 확인할 때까지 유지하는 추가 검토 표시는 빼고 비교(매번 변경으로 잡히지 않게)."""
+    r = dict(rec)
+    r["needs_review_fields"] = [f for f in rec.get("needs_review_fields") or [] if f != REVIEW_FLAG_FIELD]
+    return content_hash(r)
+
+
+def raw_diff(old: dict, new: dict) -> list[dict]:
+    """원본 응답(목록·상세·지원조건) 항목별 비교. 화면용 600자 제한과 무관하게 원문 전체로 비교한다."""
+    out = []
+    for sec, label in (("list", "목록"), ("detail", "상세"), ("cond", "지원조건")):
+        a, b = (old or {}).get(sec) or {}, (new or {}).get(sec) or {}
+        for k in sorted(set(a) | set(b)):
+            if k in RAW_IGNORED or a.get(k) == b.get(k):
+                continue
+            out.append({"field": f"원본 {k} [{label}]", "key": k, "before": a.get(k), "after": b.get(k),
+                        "kind": "메타데이터" if k in RAW_META else "핵심"})
+    return out
+
+
 class Store:
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -71,12 +109,14 @@ class Store:
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
-        # 기존 DB에 없는 열을 추가(데이터는 그대로 유지)
+        # 기존 DB에 없는 열·표를 추가(데이터는 그대로 유지)
         cols = {r[1] for r in self.db.execute("PRAGMA table_info(runs)")}
-        for col in ("reclassified", "raw_backfilled"):
+        for col in ("reclassified", "raw_backfilled", "meta_changed", "unverified"):
             if col not in cols:
                 self.db.execute(f"ALTER TABLE runs ADD COLUMN {col} INTEGER")
+        self.db.execute("CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL, detail TEXT)")
         self.last_backfilled = False
+        self.last_unverified = False
 
     def close(self):
         self.db.commit()
@@ -84,12 +124,13 @@ class Store:
 
     # ------------------------------------------------------------ 공고
     def upsert(self, item: Item, batch_id: str, now) -> str:
-        """'new' | 'changed'(공고 원문 변경) | 'reclassified'(분류 규칙 변경·원문 보완) | 'same'.
-        같은 (출처, 출처 ID)는 한 행만 유지한다. self.last_backfilled: 기존 공고의 원본 전체를 처음 보관했는가."""
+        """같은 (출처, 출처 ID)는 한 행만 유지한다. 돌려주는 값:
+        'new' | 'changed'(중요 원문 변경·확인 불가·화면 원문 변경) | 'meta_changed' | 'reclassified' | 'same'
+        self.last_backfilled: 원본 전체를 처음 보관했는가 / self.last_unverified: 변경 항목을 확인할 수 없었는가"""
         rec = item.to_record()
         h = content_hash(rec)
         t = iso(now)
-        self.last_backfilled = False
+        self.last_backfilled = self.last_unverified = False
         row = self.db.execute("SELECT * FROM notices WHERE source_key=? AND source_id=?",
                               (item.source_key, item.source_id)).fetchone()
         if row is None:
@@ -97,71 +138,149 @@ class Store:
             self.db.execute("INSERT INTO notices VALUES (?,?,?,?,?,?,?,?,?)",
                             (rec["id"], item.source_key, item.source_id, json.dumps(rec, ensure_ascii=False),
                              h, t, t, None, batch_id))
-            self._version(rec["id"], batch_id, t, "최초 수집", [], rec)
+            self._version(rec["id"], batch_id, t, NOTE_NEW, [], rec)
             self._store_raw(rec["id"], item, t, batch_id)
             return "new"
+
         nid = row["id"]
         old = json.loads(row["record_json"])
         old_flags = {k: v for k, v in old.get("flags", {}).items() if k != "not_seen_since"}
         new_flags = rec.get("flags", {})
         od, nd = old_flags.get("source_digest"), new_flags.get("source_digest")
         odv, ndv = old_flags.get("digest_version", 1), new_flags.get("digest_version", 1)
-        # 이전 원본 요약값이 없거나 계산 방식이 바뀌었으면 '데이터 이전' — 요약값끼리 비교할 수 없다
-        migrating = bool(nd) and (not od or odv != ndv)
-        backfill = self._store_raw(nid, item, t, batch_id)   # 기존 공고의 원본 전체를 처음 보관하는가
+        prev_raw = self.raw_of(nid)                       # 직전에 보관한 원본(없으면 None)
+        self._store_raw(nid, item, t, batch_id)
+        display_changes = diff(old, rec)
+        result_changed = bool(display_changes) or _cmp_hash(old) != _cmp_hash(rec)   # 정리 결과(분류·확인 표시 포함)가 달라졌나
 
-        if row["content_hash"] == h:
+        # ---- 어떤 경우인지 판정
+        if nd and od and odv == ndv and od == nd:
+            kind = "rule" if result_changed else "same"             # 원본 같음
+        elif nd and od and odv == ndv:                                # 원본 달라짐
+            if prev_raw is not None and item.raw is not None:
+                rch = raw_diff(prev_raw, item.raw)
+                if any(c["kind"] == "핵심" for c in rch):
+                    kind = "core"
+                elif rch:
+                    kind = "meta"
+                else:
+                    kind = "rule" if result_changed else "same"     # 비교 제외 항목만 다름
+            else:
+                kind, rch = "unknown", []
+        elif nd:                                                      # 이전 요약값 없음·계산 방식 바뀜 = 데이터 이전
+            kind = "display" if any(c["field"] in SOURCE_FIELDS for c in display_changes) else (
+                "rule" if result_changed else "same")
+            self.last_backfilled = True   # 원본 요약값을 처음 갖추거나 계산 방식이 바뀜 = 데이터 이전(공고 변경 아님)
+        else:                                                         # 원본 요약값이 없는 출처
+            kind = "display" if any(c["field"] in SOURCE_FIELDS for c in display_changes) else (
+                "rule" if result_changed else "same")
+        if kind != "core" and kind != "meta":
+            rch = []
+        if not self.last_backfilled and prev_raw is None and item.raw is not None and kind == "same":
+            self.last_backfilled = True                               # 요약값은 같고 원본만 처음 보관
+
+        # ---- 저장
+        base_flags = {k: v for k, v in old_flags.items() if k not in TRANSIENT_FLAGS}
+        trans = {k: new_flags[k] for k in TRANSIENT_FLAGS if k in new_flags}   # 축약 표시는 매번 새 값으로
+        keep = {k: new_flags[k] for k in ("source_digest", "digest_version") if k in new_flags}
+
+        if kind == "same":
             old["last_checked_at"] = t
-            old["flags"] = {**old_flags, **{k: v for k, v in new_flags.items() if k in ("source_digest", "digest_version")}}
+            old["flags"] = {**base_flags, **keep, **trans}
             self.db.execute("UPDATE notices SET record_json=?, last_checked_at=?, last_batch=? WHERE id=?",
                             (json.dumps(old, ensure_ascii=False), t, batch_id, nid))
-            if backfill or migrating:
-                self.last_backfilled = True
+            if self.last_backfilled:
                 self._version(nid, batch_id, t, NOTE_BACKFILL, [], old)
             return "same"
 
-        changes = diff(old, rec)
-        if od and nd and not migrating:
-            official = od != nd                       # 같은 방식으로 계산한 원본 요약값 비교
-        else:
-            # 데이터 이전 중: 화면용 원문 필드(같은 규칙으로 잘라 저장)끼리만 비교할 수 있다
-            official = any(c["field"] in SOURCE_FIELDS for c in changes)
-        if official:
-            rec.update(first_seen_at=old["first_seen_at"], last_checked_at=t, last_changed_at=t,
-                       changed_fields=[c["field"] for c in changes] or ["needs_review_fields"])
-            rec["flags"] = {**old_flags, **new_flags,
-                            "review_reset_at": t}   # 공고 내용이 바뀌면 화면의 검토 상태를 미검토로 되돌림
-            self.db.execute("UPDATE notices SET record_json=?, content_hash=?, last_checked_at=?, last_changed_at=?, last_batch=? WHERE id=?",
-                            (json.dumps(rec, ensure_ascii=False), h, t, t, batch_id, nid))
-            self._version(nid, batch_id, t, "공고 내용 변경", changes, rec)
-            return "changed"
-        # 원본은 같고 결과만 다름 → '분류 규칙 변경'(데이터 이전이 겹치면 함께 표기). 공고 변경 시각·검토 상태는 그대로
-        rec.update(first_seen_at=old["first_seen_at"], last_checked_at=t,
-                   last_changed_at=old.get("last_changed_at"), changed_fields=old.get("changed_fields", []))
-        rec["flags"] = {**old_flags, **new_flags, "rule_changed_at": t}
-        self.db.execute("UPDATE notices SET record_json=?, content_hash=?, last_checked_at=?, last_batch=? WHERE id=?",
-                        (json.dumps(rec, ensure_ascii=False), h, t, batch_id, nid))
-        note = "분류 규칙 변경"
-        if backfill or migrating:
-            self.last_backfilled = True
-            note = f"{NOTE_BACKFILL} · 분류 규칙 변경"
-        self._version(nid, batch_id, t, note, changes, rec)
-        return "reclassified"
+        rec["first_seen_at"] = old["first_seen_at"]
+        rec["last_checked_at"] = t
+        rec["flags"] = {**base_flags, **{k: v for k, v in new_flags.items() if k not in TRANSIENT_FLAGS}, **trans}
+        changes = display_changes + [{k: c[k] for k in ("field", "before", "after")} for c in rch]
 
-    def _store_raw(self, nid: str, item: Item, t: str, batch_id: str) -> bool:
-        """원본 응답 전체를 보관. 기존 공고에 원본이 하나도 없다가 처음 들어가면 True(원문 보완)."""
+        if kind in ("core", "unknown", "display"):
+            note = {"core": NOTE_CORE, "unknown": NOTE_UNKNOWN, "display": NOTE_DISPLAY}[kind]
+            rec["last_changed_at"] = t        # 이 실행에서 감지한 시각(공고가 실제로 바뀐 시각은 알 수 없음)
+            rec["changed_fields"] = [c["field"] for c in changes] or [note]
+            rec["flags"]["review_reset_at"] = t
+            rec["flags"]["last_change_kind"] = note
+            if kind == "unknown":
+                self.last_unverified = True
+                rec["needs_review_fields"] = sorted(set(rec["needs_review_fields"]) | {REVIEW_FLAG_FIELD})
+                rec["flags"]["source_diff_unverified"] = {"batch": batch_id, "note": NOTE_UNKNOWN}
+            ret = "changed"
+        elif kind == "meta":
+            note = NOTE_META
+            rec["last_changed_at"] = old.get("last_changed_at")
+            rec["changed_fields"] = old.get("changed_fields", [])
+            rec["flags"]["meta_changed_at"] = t
+            ret = "meta_changed"
+        else:  # rule
+            note = f"{NOTE_BACKFILL} · {NOTE_RULE}" if self.last_backfilled else NOTE_RULE
+            rec["last_changed_at"] = old.get("last_changed_at")
+            rec["changed_fields"] = old.get("changed_fields", [])
+            rec["flags"]["rule_changed_at"] = t
+            ret = "reclassified"
+        if kind != "unknown" and REVIEW_FLAG_FIELD in (old.get("needs_review_fields") or []) and \
+                old_flags.get("source_diff_unverified"):
+            # 확인 불가 표시는 사람이 확인할 때까지 유지
+            rec["needs_review_fields"] = sorted(set(rec["needs_review_fields"]) | {REVIEW_FLAG_FIELD})
+        self.db.execute("UPDATE notices SET record_json=?, content_hash=?, last_checked_at=?, last_changed_at=?, last_batch=? WHERE id=?",
+                        (json.dumps(rec, ensure_ascii=False), content_hash(rec), t, rec["last_changed_at"], batch_id, nid))
+        self._version(nid, batch_id, t, note, changes, rec)
+        return ret
+
+    def _store_raw(self, nid: str, item: Item, t: str, batch_id: str) -> None:
+        """원본 응답 전체를 보관(같은 요약값이면 다시 넣지 않음)."""
         if not item.raw or not item.source_digest:
-            return False
-        had = self.db.execute("SELECT 1 FROM raw_sources WHERE notice_id=? LIMIT 1", (nid,)).fetchone()
+            return
         self.db.execute("INSERT OR IGNORE INTO raw_sources VALUES (?,?,?,?,?,?)",
                         (nid, item.source_digest, item.digest_version, t, batch_id,
                          json.dumps(item.raw, ensure_ascii=False, sort_keys=True)))
-        first_version = self.db.execute("SELECT COUNT(*) FROM versions WHERE notice_id=?", (nid,)).fetchone()[0] > 0
-        return had is None and first_version
 
     def raw_of(self, nid: str) -> dict | None:
-        r = self.db.execute("SELECT raw_json FROM raw_sources WHERE notice_id=? ORDER BY fetched_at DESC LIMIT 1", (nid,)).fetchone()
+        """가장 최근에 보관한 원본."""
+        r = self.db.execute("SELECT raw_json FROM raw_sources WHERE notice_id=? ORDER BY fetched_at DESC, rowid DESC LIMIT 1",
+                            (nid,)).fetchone()
         return json.loads(r["raw_json"]) if r else None
+
+    # ------------------------------------------------------------ 1회성 데이터 점검
+    def migrate_unverified_backfill(self, now) -> int:
+        """원본 첫 보관(원문 보완) 때 이전 원본 요약값과 달랐던 공고를 찾아 '확인 불가'로 기록(한 번만 실행).
+        이전 원문이 없으므로 변경 내용·변경 시각은 만들지 않는다."""
+        name = "unverified_digest_at_first_raw_backfill"
+        if self.db.execute("SELECT 1 FROM migrations WHERE name=?", (name,)).fetchone():
+            return 0
+        t = iso(now)
+        found = []
+        for nrow in self.db.execute("SELECT id, record_json FROM notices").fetchall():
+            nid = nrow["id"]
+            vs = self.db.execute("SELECT seq, batch_id, note, record_json FROM versions WHERE notice_id=? ORDER BY seq",
+                                 (nid,)).fetchall()
+            bf = next((v for v in vs if v["note"].startswith(NOTE_BACKFILL)), None)
+            first_raw = self.db.execute("SELECT digest, batch_id FROM raw_sources WHERE notice_id=? ORDER BY fetched_at, rowid LIMIT 1",
+                                        (nid,)).fetchone()
+            if bf is None or first_raw is None:
+                continue
+            prev_digest = None
+            for v in vs:
+                if v["seq"] >= bf["seq"]:
+                    break
+                prev_digest = json.loads(v["record_json"]).get("flags", {}).get("source_digest") or prev_digest
+            if not prev_digest or prev_digest == first_raw["digest"]:
+                continue
+            rec = json.loads(nrow["record_json"])
+            rec["needs_review_fields"] = sorted(set(rec.get("needs_review_fields") or []) | {REVIEW_FLAG_FIELD})
+            rec.setdefault("flags", {})["source_diff_unverified"] = {"batch": first_raw["batch_id"], "note": NOTE_UNVERIFIED}
+            rec["flags"]["review_reset_at"] = t     # 검토 상태를 미검토로(공고 변경 시각은 기록하지 않음)
+            self.db.execute("UPDATE notices SET record_json=?, content_hash=? WHERE id=?",
+                            (json.dumps(rec, ensure_ascii=False), content_hash(rec), nid))
+            self._version(nid, "데이터 점검", t, NOTE_UNVERIFIED,
+                          [{"field": "원본 요약값", "before": prev_digest, "after": first_raw["digest"]}], rec)
+            found.append(nid)
+        self.db.execute("INSERT INTO migrations VALUES (?,?,?)", (name, t, json.dumps(found)))
+        self.db.commit()
+        return len(found)
 
     def mark_unseen(self, source_key: str, seen_ids: set[str], batch_id: str):
         """성공한 수집에서 보이지 않은 공고. 삭제·마감 처리하지 않고 표시만 한다."""
@@ -201,10 +320,13 @@ class Store:
         return n
 
     def finish_run(self, batch_id, source_key, attempt, now, *, status, fetched_raw=None, collected=None,
-                   new=None, changed=None, skipped=None, error=None, reclassified=None, raw_backfilled=None):
+                   new=None, changed=None, skipped=None, error=None, reclassified=None, raw_backfilled=None,
+                   meta_changed=None, unverified=None):
         self.db.execute("""UPDATE runs SET status=?, finished_at=?, fetched_raw=?, collected=?, new=?, changed=?,
-                           reclassified=?, raw_backfilled=?, skipped_json=?, error=? WHERE batch_id=? AND source_key=? AND attempt=?""",
+                           reclassified=?, raw_backfilled=?, meta_changed=?, unverified=?, skipped_json=?, error=?
+                           WHERE batch_id=? AND source_key=? AND attempt=?""",
                         (status, iso(now), fetched_raw, collected, new, changed, reclassified, raw_backfilled,
+                         meta_changed, unverified,
                          json.dumps(skipped, ensure_ascii=False) if skipped else None, error,
                          batch_id, source_key, attempt))
         self.db.commit()

@@ -79,16 +79,17 @@ def test_failure_isolated_and_not_zero(tmp_path):
     st = Store(tmp_path / "t.db")
     ok, bad = FakeSource("a", [item("a", "1")]), FakeSource("b", error=RuntimeError("TEST 네트워크 오류"))
     held = FakeSource("c", error=SourceUnavailable("연결 보류", "TEST 보류"))
+    today = __import__("collector.models", fromlist=["now_kst"]).now_kst().date().isoformat()   # 신규 판정은 실제 수집 날짜 기준
     for s in (bad, ok, held):
-        run_source(st, s, "2026-10-13", force=False, log=lambda *_: None)
-    data = export(st, [ok, bad, held], "2026-10-13", tmp_path / "out", include_manual=False)
+        run_source(st, s, today, force=False, log=lambda *_: None)
+    data = export(st, [ok, bad, held], today, tmp_path / "out", include_manual=False)
     runs = {s["key"]: s["run"] for s in data["sources"]}
     assert runs["a"]["status"] == "성공" and runs["a"]["new"] == 1
     assert runs["b"]["status"] == "실패" and runs["b"]["new"] is None and "네트워크" in runs["b"]["error"]
     assert runs["c"]["status"] == "연결 보류" and runs["c"]["collected"] is None
     assert data["meta"]["batch_status"] == "부분 성공"
     assert data["meta"]["mode"] == "collected"
-    assert (tmp_path / "out" / "csv" / "notices_new_2026-10-13.csv").read_text(encoding="utf-8-sig").count("\n") == 2
+    assert (tmp_path / "out" / "csv" / f"notices_new_{today}.csv").read_text(encoding="utf-8-sig").count("\n") == 2
 
 
 def test_failed_source_retried_at_most_three_times(tmp_path):

@@ -18,7 +18,7 @@ from .rules import STATUS_ORDER, apply_status  # noqa: E402  (화면과 같은 �
 from . import rules as R  # noqa: E402
 
 # 대상·혜택·기간에 중요한 충돌이 있으면 '오늘 검토 후보'에서 뺀다
-BLOCKING = {"apply_start", "apply_end", "age_condition", "amount_text", "target_text", "benefit_text", "중복 여부"}
+BLOCKING = {"apply_start", "apply_end", "age_condition", "amount_text", "target_text", "benefit_text", "중복 여부", "원본 변경 확인"}
 
 
 def is_candidate(n: dict, today: str) -> bool:
@@ -78,6 +78,8 @@ def build_sources(store: Store, sources, batch_id: str, include_manual: bool) ->
                 "changed": r["changed"] if ok else None,
                 "reclassified": r["reclassified"] if ok else None,
                 "raw_backfilled": r["raw_backfilled"] if ok else None,
+                "meta_changed": r["meta_changed"] if ok else None,
+                "unverified": r["unverified"] if ok else None,
                 "error": (r["error"] or None) if r is not None and not ok else None,
                 "last_success_at": store.last_success(info.key),
                 "attempts": len(store.attempts(batch_id, info.key)),
@@ -190,13 +192,13 @@ def summary_md(data: dict) -> str:
                  f"{k} {v}건" for k, v in m.get("review_summary", {}).items() if not k.startswith("기간 유형")),
              "- 신청기간 유형: " + " · ".join(
                  f"{k[7:]} {v}건" for k, v in m.get("review_summary", {}).items() if k.startswith("기간 유형")),
-             "", "| 출처 | 상태 | 수집 | 신규 | 공고 변경 | 분류 규칙 변경 | 원문 보완(데이터 이전) | 오류 | 마지막 성공 |",
-             "|---|---|---:|---:|---:|---:|---:|---|---|"]
+             "", "| 출처 | 상태 | 수집 | 신규 | 중요 원문 변경 | 그중 변경 항목 확인 불가 | 원본 메타데이터 변경 | 분류 규칙 변경 | 원문 보완(데이터 이전) | 오류 | 마지막 성공 |",
+             "|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|"]
     for s in data["sources"]:
         r = s["run"]
         na = "집계 안 됨"
         f = lambda k: r.get(k) if r.get(k) is not None else na
-        lines.append(f"| {s['name']} | {r['status']} | {f('collected')} | {f('new')} | {f('changed')} | {f('reclassified')} | {f('raw_backfilled')} | "
+        lines.append(f"| {s['name']} | {r['status']} | {f('collected')} | {f('new')} | {f('changed')} | {f('unverified')} | {f('meta_changed')} | {f('reclassified')} | {f('raw_backfilled')} | "
                      f"{(r['error'] or '').replace('|', '/')} | {r['last_success_at'] or '없음'} |")
     if m["batch_status"] == "실패":
         lines += ["", "> 성공한 출처가 없습니다. 정상 완료가 아닙니다."]

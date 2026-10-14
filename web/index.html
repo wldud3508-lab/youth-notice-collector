@@ -295,7 +295,7 @@ const LABELS = {
   income_condition:"소득·재산 조건", status_condition:"재학·취업 상태", benefit_text:"혜택 원문", support_type:"지원방식",
   amount_text:"지원금액", apply_start:"신청 시작일", apply_end:"신청 마감일", apply_end_time:"마감 시각", period_text:"신청기간 원문",
   apply_method:"신청방법", required_docs:"필요서류", exclusions:"제외조건·중복수혜", posted_at:"게시일", review_status:"검토 상태",
-  loan_terms:"금리·한도·상환", "중복 여부":"중복 여부"
+  loan_terms:"금리·한도·상환", "원본 변경 확인":"원본 변경 확인", "중복 여부":"중복 여부"
 };
 const EXTRA_DEFS = {
   "공모전":[["contest_field","공모 분야"],["theme","주제"],["team_type","개인·팀 참가"],["submission","제출물"],["prize_text","상금·시상 내역"]],
@@ -311,7 +311,7 @@ const STATUSES = ["접수중","신청예정","상시",ST_NO_APPLY,"기간 확인
 const PERIOD_KINDS = ["기간 명시","상시","신청 절차 없음","원문에 종료 명시","종료 표현(작성 연도 미확인)","사유 발생 후 기한",
   "기관·유형별 일정 상이","연도 있는 월 단위","별도 공고 확인","매년·정기 반복","예산 소진 등 조건부","신청기간 여러 개","원문 날짜 오류","원문 기간 미기재","분류 안 됨"];
 /* 오늘 검토 후보에서 빼는 중요한 충돌(대상·혜택·기간) */
-const BLOCKING = ["apply_start","apply_end","age_condition","amount_text","target_text","benefit_text","중복 여부"];
+const BLOCKING = ["apply_start","apply_end","age_condition","amount_text","target_text","benefit_text","중복 여부","원본 변경 확인"];
 const REVIEWS = ["미검토","검토완료","제외"];
 
 /* ------------------------- 상태 ------------------------- */
@@ -495,6 +495,8 @@ function rowHTML(n){
   else if (needsCheck(n)) tags.push(`<span class="tag t-warn">확인 필요</span>`);
   else if ((n.review_notes||[]).length) tags.push(`<span class="tag t-plain">참고사항</span>`);
   if (n.flags && n.flags.rule_changed_at && dateOf(n.flags.rule_changed_at) === TODAY) tags.push(`<span class="tag t-plain">분류 규칙 변경</span>`);
+  if (n.flags && n.flags.meta_changed_at && dateOf(n.flags.meta_changed_at) === TODAY) tags.push(`<span class="tag t-plain">원본 메타데이터 변경</span>`);
+  if (n.flags && n.flags.source_diff_unverified && (n.needs_review_fields||[]).includes("원본 변경 확인")) tags.push(`<span class="tag t-warn">원본 변경 확인 필요</span>`);
   if (n.support_type === "대출") tags.push(`<span class="tag t-plain">대출</span>`);
   if (n.support_type === "이자지원") tags.push(`<span class="tag t-plain">이자지원</span>`);
   if (n.info_type === "상시 제도 안내") tags.push(`<span class="tag t-plain">상시 제도</span>`);
@@ -576,6 +578,7 @@ function renderDetail(){
   if (stD === "상시") alerts.push(`<div class="alert info"><b>상시 표기</b>원문이 ‘상시’로 적혀 있을 뿐, 지금 실제로 접수 가능한지는 원문에서 확인해야 합니다.</div>`);
   if ((n.period_flags||[]).length) alerts.push(`<div class="alert info"><b>신청기간 참고</b>${(n.period_flags||[]).map(esc).join(" · ")}</div>`);
   if ((n.review_notes||[]).length) alerts.push(`<div class="alert info"><b>참고사항(필수 확인 아님)</b>${n.review_notes.map(x=>`${esc(LABELS[x.field]||x.field)}: ${esc(x.note)}`).join("<br>")}</div>`);
+  if (n.flags && n.flags.source_diff_unverified) alerts.push(`<div class="alert warn"><b>추가 검토 · 원본 변경 확인</b>${esc(n.flags.source_diff_unverified.note)}. 공고 원문(출처 링크)에서 현재 내용을 직접 확인해 주세요. 공고가 실제로 바뀐 시각은 알 수 없어 기록하지 않았습니다.</div>`);
   if (n.flags && n.flags.merged) alerts.push(`<div class="alert info"><b>여러 출처 연결됨</b>${esc(n.flags.merged)}</div>`);
 
   const extras = (EXTRA_DEFS[n.category]||[]).map(([k,l]) => {
@@ -593,7 +596,16 @@ function renderDetail(){
     return `<div class="link-row"><span class="lk">${esc(r.type)}</span>${link}${r.note?`<span class="note">${esc(r.note)}</span>`:""}</div>`;
   }).join("");
 
-  const hist = (n.history||[]).map(h => `<li><div class="tl-head mono">${esc(fmtTime(h.at)||"")} · ${esc(h.batch||"")}</div><div>${/^(분류 규칙 변경|원문 보완)/.test(h.note||"")?`<span class="tag t-plain">${esc(h.note)}</span> 공고 원문 변경이 아닙니다${/원문 보완/.test(h.note)?" — 원본 응답 전체를 DB에 처음 보관했습니다":" — 정리 규칙만 바뀌었습니다"}`:esc(h.note||"")}</div>${(h.changes||[]).map(c=>`<div class="diff"><b>${esc(LABELS[c.field]||c.field)}</b>: <del>${esc(c.before ?? "없음")}</del> → <ins>${esc(c.after ?? "없음")}</ins></div>`).join("")}</li>`).join("");
+  const NOTE_EXPLAIN = {
+    "분류 규칙 변경":"공고 원문 변경이 아닙니다 — 정리 규칙만 바뀌었습니다",
+    "원문 보완(데이터 이전)":"공고 원문 변경이 아닙니다 — 원본 응답 전체를 DB에 처음 보관했습니다",
+    "원문 보완(데이터 이전) · 분류 규칙 변경":"공고 원문 변경이 아닙니다 — 원본 첫 보관과 정리 규칙 변경",
+    "원본 메타데이터 변경":"수정일시 등 비핵심 정보만 바뀌었습니다. 검토 상태는 유지됩니다",
+    "중요 원문 변경":"지원대상·선정기준·지원내용·신청기간 등 핵심 원문이 바뀌어 미검토로 되돌렸습니다(시각은 감지 시각)",
+    "원본 변경 — 변경 항목 확인 불가":"이전 원본이 없어 무엇이 바뀌었는지 알 수 없습니다. 원문을 직접 확인해 주세요",
+    "이전 요약값과 차이 있음 — 이전 원문 미보관으로 변경 항목 확인 불가":"기록 시각은 점검 시각이며 실제 변경 시각이 아닙니다. 원문을 직접 확인해 주세요"};
+  const cut = v => { const t = v == null ? "없음" : String(v); return t.length > 300 ? t.slice(0,300) + ` …(${t.length}자 중 300자 표시)` : t; };
+  const hist = (n.history||[]).map(h => `<li><div class="tl-head mono">${esc(fmtTime(h.at)||"")} · ${esc(h.batch||"")}</div><div>${NOTE_EXPLAIN[h.note]?`<span class="tag ${/중요|확인 불가/.test(h.note)?"t-warn":"t-plain"}">${esc(h.note)}</span> ${esc(NOTE_EXPLAIN[h.note])}`:esc(h.note||"")}</div>${(h.changes||[]).map(c=>`<div class="diff"><b>${esc(LABELS[c.field]||c.field)}</b>: <del>${esc(cut(c.before))}</del> → <ins>${esc(cut(c.after))}</ins></div>`).join("")}</li>`).join("");
 
   el.innerHTML = `<div class="detail-inner">
     <div>
