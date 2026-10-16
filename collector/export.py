@@ -183,6 +183,49 @@ def write_csv(path: Path, rows: list[dict], today: str):
             w.writerow(vals)
 
 
+def _short(v, n: int = 160) -> str:
+    s = "없음" if v is None else " ".join(str(v).split())
+    return s if len(s) <= n else s[:n] + f" …({len(s)}자 중 {n}자)"
+
+
+def todays_findings(data: dict) -> list[str]:
+    """오늘 실제로 발견한 신규·변경을 일반 예시와 따로 보여 준다. 원본 변경은 '모집 시작'을 뜻하지 않는다."""
+    m, today = data["meta"], data["meta"]["batch_id"]
+    on_today = lambda h: (h.get("batch") == today)
+    new, core, meta, unk = [], [], [], []
+    for n in data["notices"]:
+        for h in n.get("history") or []:
+            if not on_today(h):
+                continue
+            {"최초 수집": new, "중요 원문 변경": core, "원본 메타데이터 변경": meta,
+             "원본 변경 — 변경 항목 확인 불가": unk}.get(h["note"], []).append((n, h))
+    url = lambda n: next((s["url"] for s in n["sources"] if s.get("url")), None) or "없음"
+    out = ["", f"## 오늘 발견 ({today})", "",
+           "> 신규는 '이 수집 목록에 처음 들어온 공고'이고, 원문 변경은 '출처의 글이 바뀐 것'입니다. "
+           "어느 쪽도 그 자체로 모집이 새로 시작됐다는 뜻은 아닙니다. 게시·등록일과 신청기간 원문을 함께 보세요.", ""]
+    out.append(f"### 신규 {len(new)}건")
+    for n, h in new:
+        out += [f"- **{n['title']}** ({n.get('organizer') or '기관 미기재'}) · [{n['category']}] {n.get('region') or '지역 미기재'}",
+                f"  - 지원대상: {_short(n.get('target_text'))}",
+                f"  - 혜택: {_short(n.get('benefit_text'))}",
+                f"  - 신청기간 원문: {n.get('period_text') or '미기재'} → 현재 상태: {apply_status(n, today)}"
+                f" (신청기간 유형: {n.get('period_kind') or '미분류'})",
+                f"  - 출처 게시·등록일: {n.get('posted_at') or '미기재'} · 이 수집에 처음 들어온 시각: {n.get('first_seen_at')}",
+                f"  - 공식 링크: {url(n)}"]
+    out += ["", f"### 중요 원문 변경 {len(core)}건 (검토 상태를 미검토로 되돌림)"]
+    for n, h in core:
+        out.append(f"- **{n['title']}** · 감지 시각 {h['at']} (실제 변경 시각 아님) · 현재 상태: {apply_status(n, today)} · {url(n)}")
+        for c in h.get("changes") or []:
+            out.append(f"  - {c['field']}: {_short(c.get('before'))} → {_short(c.get('after'))}")
+    if meta:
+        out += ["", f"### 원본 메타데이터 변경 {len(meta)}건 (검토 상태 유지)"]
+        out += [f"- {n['title']}: " + ", ".join(c["field"] for c in h.get("changes") or []) for n, h in meta]
+    if unk:
+        out += ["", f"### 원본 변경 — 변경 항목 확인 불가 {len(unk)}건 (원문 직접 확인 필요)"]
+        out += [f"- {n['title']} · {url(n)}" for n, h in unk]
+    return out
+
+
 def summary_md(data: dict) -> str:
     m = data["meta"]
     lines = [f"# 실행 결과 요약 — {m['batch_id']}", "", f"- 배치 상태: **{m['batch_status']}**",
@@ -202,8 +245,9 @@ def summary_md(data: dict) -> str:
                      f"{(r['error'] or '').replace('|', '/')} | {r['last_success_at'] or '없음'} |")
     if m["batch_status"] == "실패":
         lines += ["", "> 성공한 출처가 없습니다. 정상 완료가 아닙니다."]
+    lines += todays_findings(data)
     # 성공 여부를 초록색 표시만으로 판단하지 않도록, latest.json 에 실제로 들어간 공고를 출처별로 보여 준다
-    lines += ["", "## latest.json 에 저장된 공고 (출처별 건수와 예시 3건)", ""]
+    lines += ["", "## 일반 공고 예시 (오늘 발견과 무관, 출처별 누적 건수와 앞 3건)", ""]
     for s in data["sources"]:
         mine = [n for n in data["notices"] if any(x.get("source_key") == s["key"] for x in n["sources"])]
         if s["run"]["status"] != "성공" and not mine:

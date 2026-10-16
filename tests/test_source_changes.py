@@ -150,3 +150,21 @@ def test_same_source_reprocessed_does_not_repeat_history(tmp_path):
         assert run(st, item(수정일시="20261015090000", 신청기한="2026. 10. 1. ~ 2026. 11. 15."), d) == "same"
     assert len(history(st)) == n
     assert history(st)[:3] == [NOTE_CORE, NOTE_META, "최초 수집"]
+
+
+def test_summary_lists_todays_findings_separately(tmp_path):
+    from collector.export import export
+    st = Store(tmp_path / "t.db")
+    run(st, item(), 0)
+    b = day(1).date().isoformat()
+    st.start_run(b, "gov24", day(1))
+    st.upsert(item(신청기한="2026. 10. 1. ~ 2026. 11. 15."), b, day(1))                        # 중요 원문 변경
+    st.upsert(Gov24(service_key="K", http=gov24_http([gov24_row(서비스ID="TEST2", 서비스명="[TEST] 청년 교통비")])).fetch().items[0],
+              b, day(1))                                                                         # 신규
+    st.finish_run(b, "gov24", 1, day(1), status="성공", collected=2, new=1, changed=1)
+    export(st, [Gov24(service_key="K")], b, tmp_path / "out", include_manual=False)
+    s = (tmp_path / "out" / "summary.md").read_text(encoding="utf-8")
+    found = s[s.index("## 오늘 발견"):s.index("## 일반 공고 예시")]
+    assert "### 신규 1건" in found and "[TEST] 청년 교통비" in found
+    assert "### 중요 원문 변경 1건" in found and "원본 신청기한 [목록]: 2026. 10. 1. ~ 2026. 10. 31. → 2026. 10. 1. ~ 2026. 11. 15." in found
+    assert "모집이 새로 시작됐다는 뜻은 아닙니다" in found
