@@ -79,7 +79,7 @@ NOTE_UNKNOWN = "원본 변경 — 변경 항목 확인 불가"     # 이전 원�
 NOTE_UNVERIFIED = "이전 요약값과 차이 있음 — 이전 원문 미보관으로 변경 항목 확인 불가"
 NOTE_DISPLAY = "공고 내용 변경"                     # 원본 요약값 없이 화면용 원문 필드로만 판단(다른 출처·수동 입력)
 REVIEW_FLAG_FIELD = "원본 변경 확인"                # needs_review_fields 에 넣는 추가 검토 표시
-TRANSIENT_FLAGS = ("clipped_fields",)               # 매 실행 갱신, 변경 이력에 남기지 않음
+TRANSIENT_FLAGS = ("clipped_fields", "source_version", "source_mode", "source_cadence")   # 매 실행 갱신, 변경 이력에 남기지 않음
 
 
 def _cmp_hash(rec: dict) -> str:
@@ -114,6 +114,8 @@ class Store:
         for col in ("reclassified", "raw_backfilled", "meta_changed", "unverified"):
             if col not in cols:
                 self.db.execute(f"ALTER TABLE runs ADD COLUMN {col} INTEGER")
+        if "fetch_mode" not in cols:
+            self.db.execute("ALTER TABLE runs ADD COLUMN fetch_mode TEXT")
         self.db.execute("CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL, detail TEXT)")
         self.last_backfilled = False
         self.last_unverified = False
@@ -321,12 +323,12 @@ class Store:
 
     def finish_run(self, batch_id, source_key, attempt, now, *, status, fetched_raw=None, collected=None,
                    new=None, changed=None, skipped=None, error=None, reclassified=None, raw_backfilled=None,
-                   meta_changed=None, unverified=None):
+                   meta_changed=None, unverified=None, fetch_mode=None):
         self.db.execute("""UPDATE runs SET status=?, finished_at=?, fetched_raw=?, collected=?, new=?, changed=?,
-                           reclassified=?, raw_backfilled=?, meta_changed=?, unverified=?, skipped_json=?, error=?
+                           reclassified=?, raw_backfilled=?, meta_changed=?, unverified=?, fetch_mode=?, skipped_json=?, error=?
                            WHERE batch_id=? AND source_key=? AND attempt=?""",
                         (status, iso(now), fetched_raw, collected, new, changed, reclassified, raw_backfilled,
-                         meta_changed, unverified,
+                         meta_changed, unverified, fetch_mode,
                          json.dumps(skipped, ensure_ascii=False) if skipped else None, error,
                          batch_id, source_key, attempt))
         self.db.commit()
@@ -335,8 +337,10 @@ class Store:
         rows = self.attempts(batch_id, source_key)
         return rows[-1] if rows else None
 
-    def last_success(self, source_key: str) -> str | None:
-        r = self.db.execute("SELECT MAX(finished_at) AS t FROM runs WHERE source_key=? AND status='성공'", (source_key,)).fetchone()
+    def last_success(self, source_key: str, real_only: bool = False) -> str | None:
+        """real_only: 시험용 CSV 실행은 빼고 실제 출처에서 받은 성공만."""
+        extra = " AND (fetch_mode IS NULL OR fetch_mode != '공식 CSV')" if real_only else ""
+        r = self.db.execute(f"SELECT MAX(finished_at) AS t FROM runs WHERE source_key=? AND status='성공'{extra}", (source_key,)).fetchone()
         return r["t"] if r else None
 
     def latest_batch(self) -> str | None:

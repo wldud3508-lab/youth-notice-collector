@@ -63,7 +63,8 @@ def run_source(store: Store, src, batch_id: str, *, force: bool, log=print) -> N
     store.finish_run(batch_id, key, attempt, now_kst(), status="성공", fetched_raw=result.fetched_raw,
                      collected=len(result.items), new=counts["new"], changed=counts["changed"],
                      reclassified=counts["reclassified"], raw_backfilled=backfilled,
-                     meta_changed=counts["meta_changed"], unverified=unverified, skipped=result.skipped)
+                     meta_changed=counts["meta_changed"], unverified=unverified, skipped=result.skipped,
+                     fetch_mode=getattr(src, "mode", None))
     log(f"[{key}] 성공: 받은 {result.fetched_raw}건 중 대상 {len(result.items)}건 "
         f"(신규 {counts['new']}, 중요 원문 변경 {counts['changed']}(그중 변경 항목 확인 불가 {unverified}), "
         f"원본 메타데이터 변경 {counts['meta_changed']}, 분류 규칙 변경 {counts['reclassified']}, "

@@ -24,7 +24,9 @@ MAX_PAGES = 5
 class CampuScholar(Source):
     info = SourceInfo(
         key="campuscholar", name="캠퍼스칼라", categories=["장학금"], method="공식 RSS",
-        connection="연결됨 · 공식 RSS (제목·링크·분류만 저장)",
+        connection="공식 RSS (제목·링크·게시일·분류만 저장, 본문 저장 안 함)",
+        stage="허가 확인 중",
+        stage_note="RSS 응답 확인. 사이트 식별은 사용자 확인 대기, 정보 이용 안내상 전문 복제·상업적 재배포 금지·출처 표시 시 일부 인용 허용 — RSS 자동 이용 조항은 없어 문의 필요",
     )
 
     def __init__(self, confirmed: bool | None = None, http=http_get):
@@ -93,6 +95,8 @@ class CampuScholar(Source):
             return None, "제목·링크 없음"
         cats = row.get("categories") or []
         joined = ", ".join(cats)
+        if not any("장학" in c for c in cats):
+            return None, "장학금 분류가 없는 글(안내·정보 글 등)"
         if not re.search(r"대학|대학원|청년|신입생", joined + title):
             return None, "대학생·청년 대상 분류 없음(고등학생 전용 등)"
         need = ["info_type", "apply_start", "apply_end", "organizer"]

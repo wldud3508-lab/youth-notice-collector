@@ -37,6 +37,8 @@ class SourceInfo:
     categories: list[str]
     method: str
     connection: str        # 화면에 보이는 연결 상태 설명
+    stage: str = "준비 완료"   # 실제 연결 성공 / 준비 완료 / 허가 확인 중 / 미연결 (성공 실행이 있으면 export 가 '실제 연결 성공'으로 바꿈)
+    stage_note: str | None = None
 
 
 class Source:

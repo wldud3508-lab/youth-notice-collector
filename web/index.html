@@ -352,8 +352,9 @@ function applyStatus(n){
   if (k === "연도 있는 월 단위" && n.period_month_end && n.period_month_end < TODAY.slice(0,7)) return ST_ELAPSED;
   return "기간 확인 필요";
 }
-const isNew = n => dateOf(n.first_seen_at) === TODAY;
-const isChanged = n => !isNew(n) && dateOf(n.last_changed_at) === TODAY;   // 공고 원문 변경만(분류 규칙 변경 제외)
+const isPeriodic = n => !!(n.flags && n.flags.source_cadence);   // 월간 파일 등 정기 자료 — '오늘 신규 공고'로 세지 않음
+const isNew = n => !isPeriodic(n) && dateOf(n.first_seen_at) === TODAY;
+const isChanged = n => !isPeriodic(n) && !isNew(n) && dateOf(n.last_changed_at) === TODAY;   // 공고 원문 변경만(분류 규칙 변경 제외)
 const isSoon = n => applyStatus(n) === "접수중" && daysLeft(n) !== null && daysLeft(n) <= 7;
 const hasRequired = n => (n.needs_review_fields||[]).length > 0 || (n.conflicts||[]).length > 0;
 const needsCheck = n => hasRequired(n) || applyStatus(n) === "기간 확인 필요";
@@ -497,6 +498,7 @@ function rowHTML(n){
   if (n.flags && n.flags.rule_changed_at && dateOf(n.flags.rule_changed_at) === TODAY) tags.push(`<span class="tag t-plain">분류 규칙 변경</span>`);
   if (n.flags && n.flags.meta_changed_at && dateOf(n.flags.meta_changed_at) === TODAY) tags.push(`<span class="tag t-plain">원본 메타데이터 변경</span>`);
   if (n.flags && n.flags.source_diff_unverified && (n.needs_review_fields||[]).includes("원본 변경 확인")) tags.push(`<span class="tag t-warn">원본 변경 확인 필요</span>`);
+  if (isPeriodic(n)) tags.push(`<span class="tag t-plain">${esc(n.flags.source_cadence)}${n.flags.source_version?" · 기준일 "+esc(n.flags.source_version):""}</span>`);
   if (n.support_type === "대출") tags.push(`<span class="tag t-plain">대출</span>`);
   if (n.support_type === "이자지원") tags.push(`<span class="tag t-plain">이자지원</span>`);
   if (n.info_type === "상시 제도 안내") tags.push(`<span class="tag t-plain">상시 제도</span>`);
@@ -707,11 +709,12 @@ function renderSources(){
       <span class="note">성공 ${ok} · 실패 ${fail} · 연결 보류 ${hold} · 생성 ${esc(fmtTime(DATA.meta.generated_at)||"미기재")}</span>
     </div>
     <div class="tbl-scroll"><table class="src-tbl">
-      <thead><tr><th>출처</th><th>대상 분야</th><th>실제 연결 상태</th><th>${isSample?"샘플 ":""}실행 결과</th><th style="text-align:right">수집</th><th style="text-align:right">신규</th><th style="text-align:right">변경</th><th>오류 내용</th><th>마지막 성공</th></tr></thead>
+      <thead><tr><th>출처</th><th>대상 분야</th><th>실제 연결 상태</th><th>연결 단계</th><th>${isSample?"샘플 ":""}실행 결과</th><th style="text-align:right">수집</th><th style="text-align:right">신규</th><th style="text-align:right">변경</th><th>오류 내용</th><th>마지막 성공</th></tr></thead>
       <tbody>${DATA.sources.map(s=>{ const r = s.run||{}; return `<tr>
         <td><b>${esc(s.name)}</b></td>
         <td>${esc((s.categories||[]).join(", "))}</td>
         <td><span class="tag ${/연결됨/.test(s.connection||"")?"t-ok":"t-warn"}">${esc(s.connection||"미기재")}</span></td>
+        <td>${s.stage?`<span class="tag ${s.stage==="실제 연결 성공"?"t-ok":s.stage==="미연결"?"t-bad":"t-warn"}">${esc(s.stage)}</span>`:`<span class="null">—</span>`}${s.stage_note?`<div class="note">${esc(s.stage_note)}</div>`:""}${s.source_version?`<div class="note">원본 기준일 ${esc(s.source_version)}${s.fetch_mode?" · "+esc(s.fetch_mode):""}</div>`:""}</td>
         <td>${runChip(r.status)}</td>
         <td class="num">${num(r,"collected")}</td><td class="num">${num(r,"new")}</td><td class="num">${num(r,"changed")}</td>
         <td style="max-width:280px">${r.error?esc(r.error):dash}</td>

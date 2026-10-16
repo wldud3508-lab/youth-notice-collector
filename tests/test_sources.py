@@ -112,3 +112,28 @@ def test_held_sources():
         with pytest.raises(SourceUnavailable) as e:
             s.fetch()
         assert e.value.status == "연결 보류"
+
+
+def test_youthcenter_error_never_shows_key():
+    key = "TEST-SECRET-KEY-123"
+
+    class Html:
+        status_code, headers, text = 200, {"Content-Type": "text/html"}, f"<html>invalid apiKeyNm={key}</html>"
+
+        def json(self):
+            raise ValueError
+
+    with pytest.raises(UnexpectedResponse) as e:
+        YouthCenter(api_key=key, http=lambda *a, **k: Html()).fetch()
+    assert key not in str(e.value) and "text/html" in str(e.value)
+
+    with pytest.raises((UnexpectedResponse, SourceUnavailable)) as e:
+        YouthCenter(api_key=key, http=lambda *a, **k: FakeResp({"resultCode": 500, "resultMessage": f"bad {key}"})).fetch()
+    assert key not in str(e.value) and "500" in str(e.value)
+
+
+def test_youthcenter_incomplete_pages_fail():
+    def http(url, params=None, **_):
+        return FakeResp({"result": {"pagging": {"totCount": 250}, "youthPolicyList": [youth_row()] if params["pageNum"] == 1 else []}})
+    with pytest.raises(UnexpectedResponse):
+        YouthCenter(api_key="K", http=http).fetch()

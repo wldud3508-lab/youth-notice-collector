@@ -56,6 +56,7 @@ def review_summary(notices: list[dict], today: str) -> dict:
 def build_sources(store: Store, sources, batch_id: str, include_manual: bool) -> list[dict]:
     out = []
     infos = [s.info for s in sources]
+    sources_by_key = {s.info.key: s for s in sources}
     if include_manual:
         from .sources.base import SourceInfo
         infos.append(SourceInfo("manual", "수동 입력", ["공모전", "장학금", "생활비", "주거비"], "수동 입력",
@@ -69,8 +70,14 @@ def build_sources(store: Store, sources, batch_id: str, include_manual: bool) ->
         conn = info.connection
         if status in ("연결 보류", "미연결"):
             conn = f"{status} · {r['error']}" if r is not None and r["error"] else status
+        # 실제 출처에서 자동으로 받아 성공한 기록이 있어야 '실제 연결 성공'. 시험용 CSV 실행은 해당하지 않음
+        stage = "실제 연결 성공" if store.last_success(info.key, real_only=True) else info.stage
+        mode = r["fetch_mode"] if r is not None else None
         out.append({
             "key": info.key, "name": info.name, "categories": info.categories, "connection": conn, "method": info.method,
+            "stage": stage, "stage_note": info.stage_note if stage != "실제 연결 성공" else None,
+            "source_version": getattr(sources_by_key.get(info.key), "source_version", None),
+            "fetch_mode": mode,
             "run": {
                 "status": status,
                 "collected": r["collected"] if ok else None,
@@ -193,7 +200,15 @@ def todays_findings(data: dict) -> list[str]:
     m, today = data["meta"], data["meta"]["batch_id"]
     on_today = lambda h: (h.get("batch") == today)
     new, core, meta, unk = [], [], [], []
+    periodic = {}   # 월간 파일 등 정기 자료: 공고 단위가 아니라 자료 반영으로 따로 집계
     for n in data["notices"]:
+        cad = (n.get("flags") or {}).get("source_cadence")
+        if cad:
+            for h in n.get("history") or []:
+                if on_today(h) and h["note"] in ("최초 수집", "중요 원문 변경", "원본 변경 — 변경 항목 확인 불가"):
+                    key = (n["sources"][0]["site"], cad, (n.get("flags") or {}).get("source_version"))
+                    periodic.setdefault(key, {"최초 수집": 0, "변경": 0})["최초 수집" if h["note"] == "최초 수집" else "변경"] += 1
+            continue
         for h in n.get("history") or []:
             if not on_today(h):
                 continue
@@ -204,7 +219,9 @@ def todays_findings(data: dict) -> list[str]:
            "> 신규는 '이 수집 목록에 처음 들어온 공고'이고, 원문 변경은 '출처의 글이 바뀐 것'입니다. "
            "어느 쪽도 그 자체로 모집이 새로 시작됐다는 뜻은 아닙니다. 게시·등록일과 신청기간 원문을 함께 보세요.", ""]
     out.append(f"### 신규 {len(new)}건")
-    for n, h in new:
+    if len(new) > 15:
+        out.append(f"- (처음 연결한 출처 등으로 많아서 15건만 표시, 나머지 {len(new) - 15}건은 관리 화면 '오늘 신규'에서 확인)")
+    for n, h in new[:15]:
         out += [f"- **{n['title']}** ({n.get('organizer') or '기관 미기재'}) · [{n['category']}] {n.get('region') or '지역 미기재'}",
                 f"  - 지원대상: {_short(n.get('target_text'))}",
                 f"  - 혜택: {_short(n.get('benefit_text'))}",
@@ -223,6 +240,11 @@ def todays_findings(data: dict) -> list[str]:
     if unk:
         out += ["", f"### 원본 변경 — 변경 항목 확인 불가 {len(unk)}건 (원문 직접 확인 필요)"]
         out += [f"- {n['title']} · {url(n)}" for n, h in unk]
+    if periodic:
+        out += ["", "### 정기 자료 반영 (매일 올라오는 모집공고가 아님)"]
+        for (site, cad, ver), c in periodic.items():
+            out.append(f"- {site} {cad} · 원본 기준일 {ver or '확인 못 함'} · 우리 수집일 {today}: "
+                       f"처음 반영 {c['최초 수집']}건, 내용 바뀐 항목 {c['변경']}건. 모집 상태는 각 항목의 모집시작일·종료일로 판단")
     return out
 
 

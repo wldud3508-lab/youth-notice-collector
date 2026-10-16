@@ -46,6 +46,11 @@
         "categories": { "type": "array", "items": { "enum": ["공모전", "장학금", "생활비", "주거비"] } },
         "connection": { "type": "string", "description": "예: '연결됨 · 공식 API', '연결 보류 · 이용약관상 자동수집 불가', '미연결 · 인증키 없음'" },
         "method": { "$ref": "#/$defs/nstr", "description": "공식 API / 공식 RSS / 수동 입력 등" },
+        "stage": { "enum": ["실제 연결 성공", "준비 완료", "허가 확인 중", "미연결"],
+                   "description": "실제 연결 성공 = 실제 출처에서 자동으로 받아 성공한 기록 있음(시험용 CSV 제외)" },
+        "stage_note": { "$ref": "#/$defs/nstr" },
+        "source_version": { "$ref": "#/$defs/nstr", "description": "원본 파일 기준일 등(우리 수집일과 별개)" },
+        "fetch_mode": { "$ref": "#/$defs/nstr", "description": "이번 실행에서 받은 방식(Open API / 공식 CSV 등)" },
         "run": {
           "type": "object",
           "required": ["status", "collected", "new", "changed", "error", "last_success_at"],

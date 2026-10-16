@@ -28,7 +28,8 @@ def _clip(s):
 class YouthCenter(Source):
     info = SourceInfo(
         key="youthcenter", name="온통청년", categories=["생활비", "주거비"], method="공식 API (온통청년 Open API)",
-        connection="연결됨 · 공식 API (온통청년 청년정책)",
+        connection="공식 API (온통청년 청년정책)",
+        stage="준비 완료", stage_note="코드 준비됨. 온통청년 Open API 인증키 승인 대기",
     )
 
     def __init__(self, api_key: str | None = None, include_public_rental: bool = False, http=http_get):
@@ -41,16 +42,20 @@ class YouthCenter(Source):
             r = self.http(API, params={"apiKeyNm": self.key, "pageNum": n, "pageSize": PAGE_SIZE, "rtnType": "json"})
         except Exception as e:  # noqa: BLE001
             raise RuntimeError(redact(f"{n}쪽 요청 실패: {e}", self.key)) from e
+        diag = lambda: redact(f"HTTP {getattr(r, 'status_code', '?')}, 형식 {getattr(r, 'headers', {}).get('Content-Type', '?')}, "
+                              f"앞부분 {' '.join((getattr(r, 'text', '') or '')[:120].split())!r}", self.key)
         try:
             body = r.json()
         except ValueError as e:
-            raise UnexpectedResponse("JSON이 아닌 응답 (인증키 오류 시 HTML/XML이 올 수 있음)") from e
+            raise UnexpectedResponse("JSON이 아닌 응답 — " + diag()) from e
         res = body.get("result") if isinstance(body, dict) else None
         if not isinstance(res, dict) or not isinstance(res.get("youthPolicyList"), list):
             msg = body.get("resultMessage") if isinstance(body, dict) else None
+            code = body.get("resultCode") if isinstance(body, dict) else None
+            keys = list(body)[:8] if isinstance(body, dict) else type(body).__name__
             if msg and ("인증" in msg or "key" in msg.lower()):
-                raise SourceUnavailable("미연결", f"인증키 오류: {msg}")
-            raise UnexpectedResponse(f"result.youthPolicyList 없음 (resultMessage: {msg})")
+                raise SourceUnavailable("미연결", redact(f"인증키 오류: {msg} (resultCode {code})", self.key))
+            raise UnexpectedResponse(redact(f"result.youthPolicyList 없음 (resultCode {code}, resultMessage {msg}, 최상위 키 {keys})", self.key))
         pag = res.get("pagging") or res.get("paging") or {}
         try:
             total = int(pag.get("totCount"))
@@ -62,12 +67,19 @@ class YouthCenter(Source):
         if not self.key:
             raise SourceUnavailable("미연결", "환경변수 YOUTHCENTER_API_KEY 가 없음")
         rows: list[dict] = []
+        pages = 0
+        total = None
         for n in range(1, MAX_PAGES + 1):
             page, total = self._page(n)
+            pages += 1
             rows.extend(page)
             if not page or (total is not None and len(rows) >= total):
                 break
             time.sleep(0.3)
+        if total is not None and len(rows) < total:
+            raise UnexpectedResponse(f"전체 {total}건 중 {len(rows)}건만 받음({pages}쪽) — 페이지 처리 확인 필요")
+        self.pages, self.total = pages, total
+        print(f"[youthcenter] 응답 확인: {pages}쪽, 전체 {total}건(API 표기), 받은 {len(rows)}건")
         items, skipped = [], {}
         for row in rows:
             item, why = self.map_row(row)
