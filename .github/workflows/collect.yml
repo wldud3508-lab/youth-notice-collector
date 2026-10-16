@@ -9,6 +9,14 @@ on:
         description: "오늘 이미 성공한 출처도 다시 수집"
         type: boolean
         default: false
+      sources:
+        description: "이번 실행에서만 켤 출처(쉼표 구분, 예: kosaf). 비우면 평소 설정"
+        type: string
+        default: ""
+      dry_run:
+        description: "시험 실행: 누적 데이터 사본으로만 돌리고 저장·화면 배포는 하지 않음"
+        type: boolean
+        default: false
 
 permissions:
   contents: write               # data 브랜치에 누적 DB 커밋
@@ -22,7 +30,8 @@ concurrency:                    # 같은 시각에 두 번 돌지 않게
 env:
   TZ: Asia/Seoul
   # 켤 출처(쉼표 구분). 첫 실행은 정부24만. 나중에 저장소 Variables의 ENABLED_SOURCES 로 바꿀 수 있음
-  ENABLED_SOURCES: ${{ vars.ENABLED_SOURCES || 'gov24' }}
+  ENABLED_SOURCES: ${{ inputs.sources || vars.ENABLED_SOURCES || 'gov24' }}
+  DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
   NOTICE_DB: store/notices.db
   NOTICE_OUT: store/public
 
@@ -52,6 +61,14 @@ jobs:
             mkdir store && git -C store init -q -b data && git -C store remote add origin "$REMOTE"
           fi
 
+      - name: 시험 실행이면 누적 데이터 사본 사용
+        if: env.DRY_RUN == '1'
+        run: |
+          cp -r store trial
+          echo "NOTICE_DB=trial/notices.db" >> "$GITHUB_ENV"
+          echo "NOTICE_OUT=trial/public" >> "$GITHUB_ENV"
+          echo "시험 실행: 켤 출처 = $ENABLED_SOURCES (저장·배포 안 함)"
+
       - name: 수집 실행
         id: run1
         continue-on-error: true
@@ -59,6 +76,8 @@ jobs:
           DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
           YOUTHCENTER_API_KEY: ${{ secrets.YOUTHCENTER_API_KEY }}
           KOSAF_ODCLOUD_PATH: ${{ vars.KOSAF_ODCLOUD_PATH }}
+          KOSAF_CSV_PATH: ${{ vars.KOSAF_CSV_PATH }}
+          KOSAF_SOURCE_VERSION: ${{ vars.KOSAF_SOURCE_VERSION }}
           CAMPUSCHOLAR_CONFIRMED: ${{ vars.CAMPUSCHOLAR_CONFIRMED }}
           INCLUDE_PUBLIC_RENTAL: ${{ vars.INCLUDE_PUBLIC_RENTAL }}
           COLLECT_TRIGGER_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/collect.yml
@@ -71,11 +90,13 @@ jobs:
           DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
           YOUTHCENTER_API_KEY: ${{ secrets.YOUTHCENTER_API_KEY }}
           KOSAF_ODCLOUD_PATH: ${{ vars.KOSAF_ODCLOUD_PATH }}
+          KOSAF_CSV_PATH: ${{ vars.KOSAF_CSV_PATH }}
+          KOSAF_SOURCE_VERSION: ${{ vars.KOSAF_SOURCE_VERSION }}
           CAMPUSCHOLAR_CONFIRMED: ${{ vars.CAMPUSCHOLAR_CONFIRMED }}
           INCLUDE_PUBLIC_RENTAL: ${{ vars.INCLUDE_PUBLIC_RENTAL }}
           COLLECT_TRIGGER_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/collect.yml
         run: |
-          if grep -q "| 실패 |" store/public/summary.md 2>/dev/null; then
+          if [ "$DRY_RUN" != "1" ] && grep -q "| 실패 |" "$NOTICE_OUT/summary.md" 2>/dev/null; then
             sleep 600
             python -m collector run      # 이미 성공한 출처는 자동으로 건너뜀
           else
@@ -83,7 +104,7 @@ jobs:
           fi
 
       - name: 누적 데이터 저장 (data 브랜치에 커밋)
-        if: always()
+        if: always() && env.DRY_RUN != '1'
         run: |
           cd store
           git config user.name "github-actions[bot]"
@@ -95,10 +116,12 @@ jobs:
 
       - name: 실행 결과 요약 표시
         if: always()
-        run: cat store/public/summary.md >> "$GITHUB_STEP_SUMMARY" || echo "요약 파일 없음" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          if [ "$DRY_RUN" = "1" ]; then echo "> **시험 실행** — 누적 데이터 사본으로 돌렸고 저장·화면 배포는 하지 않았습니다." >> "$GITHUB_STEP_SUMMARY"; fi
+          cat "$NOTICE_OUT/summary.md" >> "$GITHUB_STEP_SUMMARY" || echo "요약 파일 없음" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 관리 화면 묶기
-        if: always()
+        if: always() && env.DRY_RUN != '1'
         run: |
           mkdir -p _site/data
           cp -r web/. _site/
@@ -108,7 +131,7 @@ jobs:
           fi
 
       - uses: actions/upload-pages-artifact@v3
-        if: always()
+        if: always() && env.DRY_RUN != '1'
         with:
           path: _site
 
@@ -118,7 +141,8 @@ jobs:
           python - <<'PY'
           import json, sys
           try:
-              st = json.load(open("store/public/latest.json", encoding="utf-8"))["meta"]["batch_status"]
+              import os
+              st = json.load(open(os.environ["NOTICE_OUT"] + "/latest.json", encoding="utf-8"))["meta"]["batch_status"]
           except Exception as e:
               print("결과 파일을 만들지 못했습니다:", e); sys.exit(1)
           print("배치 상태:", st)
@@ -128,7 +152,7 @@ jobs:
 
   deploy:
     needs: collect
-    if: always() && needs.collect.result != 'cancelled'
+    if: always() && needs.collect.result != 'cancelled' && !inputs.dry_run
     runs-on: ubuntu-latest
     environment:
       name: github-pages
