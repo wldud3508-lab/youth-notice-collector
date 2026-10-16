@@ -124,15 +124,22 @@ def _rec(key, sid, **f):
     return r
 
 
-def test_merge_rules():
-    same = merge_records([_rec("gov24", "1", title="청년 월세"), _rec("youthcenter", "9", title="청년 월세", amount_text="월 20만 원")])
-    assert len(same) == 1 and len(same[0]["sources"]) == 2
-    assert same[0]["conflicts"][0]["field"] == "amount_text"
-    cand = merge_records([_rec("gov24", "1", title="청년 월세"), _rec("youthcenter", "9", title="청년 월세", apply_end="2026-11-30")])
-    assert len(cand) == 2 and all("중복 여부" in r["needs_review_fields"] for r in cand)
-    rounds = merge_records([_rec("gov24", "1", title="청년 월세"),
-                            _rec("youthcenter", "9", title="청년 월세", apply_start="2025-10-01", apply_end="2025-10-31")])
-    assert rounds[0]["related"][0]["type"] == "다른 회차" and "중복 여부" not in rounds[0]["needs_review_fields"]
+def test_cross_source_never_merged_only_linked():
+    gov = _rec("gov24", "1", title="청년 월세", amount_text="월 20만 원", apply_url="https://gov.example/TEST")
+    gov.update(review_status="확인 완료", needs_review_fields=[])
+    yc = _rec("youthcenter", "9", title="청년 월세", amount_text="월 30만 원", apply_url=None)
+    out = merge_records([gov, yc])
+    assert len(out) == 2                                     # 출처가 다르면 따로 남음
+    g, y = (next(r for r in out if r["sources"][0]["source_key"] == k) for k in ("gov24", "youthcenter"))
+    assert len(g["sources"]) == 1 and len(y["sources"]) == 1
+    assert g["amount_text"] == "월 20만 원" and y["amount_text"] == "월 30만 원"   # 서로 덮어쓰지 않음
+    assert y["apply_url"] is None                             # 다른 출처 링크로 채우지 않음
+    assert g["related"][0]["type"] == "같은 정책 후보(다른 출처)" and g["related"][0]["id"] == y["id"]
+    assert g["review_status"] == "확인 완료" and g["needs_review_fields"] == []   # 정부24 검토 상태 보존
+    assert not g["conflicts"]
+    # 같은 출처끼리는 연결하지 않음, 제목이 다르면 연결 없음
+    assert not merge_records([_rec("gov24", "1", title="A"), _rec("gov24", "2", title="A")])[0]["related"]
+    assert not merge_records([_rec("gov24", "1", title="A"), _rec("youthcenter", "2", title="B")])[0]["related"]
 
 
 def test_sample_file_is_marked_sample_and_valid():

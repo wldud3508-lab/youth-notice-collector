@@ -3,16 +3,21 @@
 엔드포인트: GET https://www.youthcenter.go.kr/go/ythip/getPlcy  (apiKeyNm, pageNum, pageSize, rtnType=json)
 응답: result.youthPolicyList[], 전체 건수 result.pagging.totCount
 엔드포인트·필드명은 공개 프로젝트(youth-policy-mcp, 2026-07 실키 검증 주석)와 대조했고,
-이 저장소에서 실키로 호출해 본 적은 아직 없다. 구조가 다르면 실패로 기록한다.
+2026-10-16 시험 실행(실키)에서 33쪽·3264건 전체 수신을 확인했다. 구조가 다르면 실패로 기록한다.
+수집 범위 판정은 youthcenter_rules.decide(포함/분류 검토/제외 + 근거). '분류 검토'·'제외'는 DB에 저장하지 않고
+시험 보고서(collector/review_report.py)에 사유와 함께 남긴다.
 """
 from __future__ import annotations
 
 import os
+import re
 import time
 
+from .. import rules as R
 from .. import textutil as T
 from ..models import Item
 from .base import FetchResult, Source, SourceInfo, SourceUnavailable, UnexpectedResponse, http_get, redact
+from .youthcenter_rules import INCLUDE, Decision, decide
 
 API = "https://www.youthcenter.go.kr/go/ythip/getPlcy"
 PAGE_SIZE = 100
@@ -36,6 +41,11 @@ class YouthCenter(Source):
         self.key = (api_key if api_key is not None else os.getenv("YOUTHCENTER_API_KEY") or "").strip() or None
         self.include_public_rental = include_public_rental
         self.http = http
+        self.rows: list[dict] = []
+        self.decisions: list = []
+        self.dup_ids: dict = {}
+        self.page_log: list[dict] = []
+        self.pages = self.total = None
 
     def _page(self, n: int) -> tuple[list[dict], int | None]:
         try:
@@ -101,58 +111,94 @@ class YouthCenter(Source):
             raise UnexpectedResponse(f"전체 {total}건 중 {len(rows)}건만 받음({pages}쪽) — 페이지 처리 확인 필요")
         self.pages, self.total = pages, total
         print(f"[youthcenter] 응답 확인: {pages}쪽, 전체 {total}건(API 표기), 받은 {len(rows)}건")
+        self.rows = rows
+        return self.classify_rows(rows)
+
+    def classify_rows(self, rows: list[dict]) -> FetchResult:
+        """받은 원본 행 → 판정·정리. 원본 스냅숏으로 재검토할 때도 같은 함수를 쓴다(재호출 없음)."""
         items, skipped = [], {}
+        self.decisions: list[tuple[dict, Decision, Item | None]] = []
+        # 같은 정책번호가 응답 안에 여러 번 나오면 첫 행만 저장(같은 실행에서 '변경'으로 잘못 잡히지 않게)
+        by_id: dict[str, list[dict]] = {}
         for row in rows:
-            item, why = self.map_row(row)
-            if item:
+            by_id.setdefault(T.clean(row.get("plcyNo")) or "", []).append(row)
+        self.dup_ids = {k: len(v) for k, v in by_id.items() if k and len(v) > 1}
+        done = set()
+        for row in rows:
+            pid = T.clean(row.get("plcyNo")) or ""
+            if pid and pid in done:
+                skipped["같은 정책번호 중복 행(첫 행만 저장)"] = skipped.get("같은 정책번호 중복 행(첫 행만 저장)", 0) + 1
+                continue
+            done.add(pid)
+            dec = decide(row, include_public_rental=self.include_public_rental)
+            item = None
+            if dec.verdict == INCLUDE:
+                item = self._item(row, dec)
+                if pid in self.dup_ids:
+                    same = all(_raw(r) == _raw(row) for r in by_id[pid])
+                    item.fields["review_notes"].append({"field": "source", "note": (
+                        f"응답 안에 같은 정책번호가 {self.dup_ids[pid]}번 나옴 — "
+                        + ("내용 동일" if same else "내용이 서로 달라 첫 행만 저장, 원문 확인 필요"))})
+                    if not same:
+                        item.needs_review.append("중복 여부")
                 items.append(item)
             else:
-                skipped[why] = skipped.get(why, 0) + 1
+                key = f"{dec.verdict}: {dec.reason}"
+                skipped[key] = skipped.get(key, 0) + 1
+            self.decisions.append((row, dec, item))
         return FetchResult(items=items, fetched_raw=len(rows), skipped=skipped)
 
     def map_row(self, row: dict) -> tuple[Item | None, str]:
+        dec = decide(row, include_public_rental=self.include_public_rental)
+        if dec.verdict != INCLUDE:
+            return None, f"{dec.verdict}: {dec.reason}"
+        return self._item(row, dec), ""
+
+    def _item(self, row: dict, dec: Decision) -> Item:
         g = lambda *ks: next((T.clean(row.get(k)) for k in ks if T.clean(row.get(k))), None)
         pid, name = g("plcyNo"), g("plcyNm")
-        if not pid or not name:
-            return None, "정책번호·정책명 없음"
         content, expl = g("plcySprtCn"), g("plcyExplnCn")
-        cat, cat_basis = T.classify(name, content, expl, g("plcyKywdNm"), g("mclsfNm"),
-                                    include_public_rental=self.include_public_rental)
-        if not cat:
-            return None, cat_basis or "생활비·주거비·장학금 분류에 해당 없음"
+        cat = dec.category
+        need: list[str] = []
+        notes: list[dict] = []
+        conflicts: list[dict] = []
+        ev: dict[str, str] = {"category": dec.basis_text()}
 
-        need, ev = [], {}
+        # ---- 신청기간: 신청기간(aplyYmd)에만 공통 기간 규칙을 적용. 사업기간은 신청기간으로 쓰지 않음
         aply = g("aplyYmd")
+        pr = R.classify_period(aply)
         if aply:
-            period_text = aply
-            p = T.parse_period(aply)
-            if p.needs_review and not p.always:
-                need += ["apply_start", "apply_end"]
-                ev["apply_end"] = f"자동 해석 보류: {p.reason}"
+            ev["period_text"] = f"신청기간(aplyYmd) 원문: {aply[:160]}"
         else:
-            # 신청기간이 없으면 사업기간을 신청기간으로 쓰지 않는다. 원문만 보존하고 확인 요청.
-            bgn, end, etc = g("bizPrdBgngYmd"), g("bizPrdEndYmd"), g("bizPrdEtcCn")
-            period_text = f"(사업기간) {bgn or ''} ~ {end or ''}" if (bgn or end) else etc
-            p = T.Period(always=bool(period_text and ("상시" in period_text or "연중" in period_text)))
-            if not p.always:
-                need += ["apply_start", "apply_end"]
-            if period_text:
-                ev["period_text"] = "신청기간(aplyYmd) 없음 — 사업기간·기타 기간 원문만 표시"
+            ev["period_text"] = "신청기간(aplyYmd) 비어 있음 — 날짜를 추측하지 않음"
+        bgn, end, etc = g("bizPrdBgngYmd"), g("bizPrdEndYmd"), g("bizPrdEtcCn")
+        if bgn or end or etc:
+            biz = " ~ ".join(x for x in (T.ymd_compact(bgn) or bgn, T.ymd_compact(end) or end) if x)
+            notes.append({"field": "period_text", "note": "사업기간(신청기간 아님, 접수 여부 판단에 쓰지 않음): "
+                          + " / ".join(x for x in (biz, etc) if x)})
+        if pr.needs_period_check:
+            need += ["apply_start", "apply_end"]
+            ev["apply_end"] = f"신청기간 유형: {pr.kind}" + (f" ({pr.reason})" if pr.reason else "")
+        if pr.kind == R.KIND_ALWAYS:
+            notes.append({"field": "period_text", "note": "상시 표기 — 실제 접수 가능 여부는 원문 확인"})
 
-        lo, hi = g("sprtTrgtMinAge"), g("sprtTrgtMaxAge")
-        age = None
-        if g("sprtTrgtAgeLmtYn") == "N":
-            age = "연령 제한 없음 (API 표기)"
-        elif lo or hi:
-            text_age, text_ev, man_need = T.parse_age(" ".join(x for x in (expl, g("addAplyQlfcCndCn")) if x))
-            if text_age:
-                age = text_age
-                ev["age_condition"] = text_ev
-                if man_need:
-                    need.append("age_condition")
-            else:
-                age = f"{lo or '?'}~{hi or '?'}세 (API 수치, 만 나이 여부 원문 확인 필요)"
-                need.append("age_condition")
+        # ---- 연령: 원문 표현 우선. API 수치는 의미(만 나이 여부)를 확인하지 않았으므로 그대로 표시
+        def _int(v):
+            try:
+                return int(str(v).strip()) if v is not None and str(v).strip() != "" else None
+            except ValueError:
+                return None
+        lo, hi = _int(row.get("sprtTrgtMinAge")), _int(row.get("sprtTrgtMaxAge"))
+        code_range = (lo, hi) if lo is not None and hi is not None and (lo > 0 or hi > 0) else None
+        af = R.age_fields(" ".join(x for x in (expl, g("addAplyQlfcCndCn")) if x), code_range, "온통청년 연령 값")
+        if af["evidence"]:
+            ev["age_condition"] = af["evidence"]
+        notes += [{"field": "age_condition", "note": x} for x in af["notes"]]
+        if g("sprtTrgtAgeLmtYn"):
+            notes.append({"field": "age_condition", "note": f"API 연령제한여부 값 {g('sprtTrgtAgeLmtYn')} (값의 의미는 공식 명세로 확인 전)"})
+        if af["need"]:
+            need.append("age_condition")
+            conflicts.append(af["conflict"])
 
         region, reg_basis = T.region_from_codes(g("zipCd"))
         if not region:
@@ -168,38 +214,77 @@ class YouthCenter(Source):
             need.append("support_type")
         elif st_ev:
             ev["support_type"] = st_ev
-        amt = T.parse_amount(content)
-        if amt.ambiguous:
+        am = R.amount_fields(content)
+        if am["evidence"]:
+            ev["amount_text"] = am["evidence"]
+        notes += [{"field": "amount_text", "note": x} for x in am["notes"]]
+        if am["need"]:
             need.append("amount_text")
-        if amt.evidence:
-            ev["amount_text"] = amt.evidence
+
+        # ---- 링크: 응답에 있는 값만. 온통청년 상세 주소는 공식 규칙을 확인하지 못해 만들지 않음
+        links, bad = [], []
+        for fld, label in LINK_FIELDS:
+            v = g(fld)
+            if not v:
+                continue
+            if re.match(r"https?://\S+$", v):
+                links.append({"type": label, "field": fld, "url": v})
+            else:
+                bad.append({"type": label, "field": fld, "text": v[:200]})
+        apply_url = next((x["url"] for x in links if x["field"] == "aplyUrlAddr"), None)
+        flags = {"links": links}
+        if bad:
+            flags["link_texts"] = bad
+            notes.append({"field": "links", "note": "주소 형식이 아닌 링크 값 " + ", ".join(f"{x['type']} '{x['text'][:60]}'" for x in bad)})
+        if not links:
+            need.append(LINK_NEED)
+            flags["link_missing"] = True
 
         extra = {}
         if cat in ("생활비", "주거비"):
-            extra = {"amount_period_text": amt.text, "budget_end": None, "household": None,
-                     "housing": None, "self_pay": None,
-                     "loan_terms": None}
+            extra = {"amount_period_text": am["amount_text"], "budget_end": None, "household": None,
+                     "housing": None, "self_pay": None, "loan_terms": None}
         elif cat == "장학금":
-            extra = {"pay_amount": amt.text, "income_cond": income}
+            extra = {"pay_amount": am["amount_text"], "income_cond": income}
 
         org = g("sprvsnInstCdNm", "operInstCdNm", "rgtrInstCdNm")
         fields = {
             "category": cat, "title": name, "organizer": org,
-            "info_type": "상시 제도 안내" if p.always else "모집공고",
+            "info_type": "상시 제도 안내" if pr.kind in (R.KIND_ALWAYS, R.KIND_NO_APPLY) else "모집공고",
             "target_text": _clip(expl), "youth_relevant": True,
             "youth_basis": "온통청년(청년정책 통합플랫폼) 등록 청년정책",
-            "age_condition": age, "region": region, "region_condition": reg_basis,
+            "age_condition": af["age_condition"], "region": region, "region_condition": reg_basis,
             "income_condition": income, "status_condition": _clip(g("addAplyQlfcCndCn")),
             "benefit_text": _clip(content), "support_type": stype,
-            "amount_text": amt.text, "amount_value": amt.value, "amount_unit": amt.unit,
-            "amount_period": amt.period, "amount_qualifier": amt.qualifier,
-            "apply_start": p.start, "apply_end": p.end, "apply_end_time": p.end_time,
-            "period_text": period_text, "apply_method": _clip(g("plcyAplyMthdCn")),
-            "apply_url": g("aplyUrlAddr"), "required_docs": _clip(g("sbmsnDcmntCn")),
-            "exclusions": _clip(g("ptcpPrpTrgtCn")), "official_url": g("refUrlAddr1", "refUrlAddr2"),
+            "amount_text": am["amount_text"], "amount_value": am["amount_value"], "amount_unit": am["amount_unit"],
+            "amount_period": am["amount_period"], "amount_qualifier": am["amount_qualifier"],
+            "amount_items": am["amount_items"],
+            "apply_start": pr.start, "apply_end": pr.end, "apply_end_time": pr.end_time,
+            "period_kind": pr.kind, "period_flags": pr.flags, "period_month_end": pr.month_end,
+            "period_closed_year": pr.closed_year, "review_notes": notes,
+            "period_text": aply, "apply_method": _clip(g("plcyAplyMthdCn")),
+            "apply_url": apply_url, "required_docs": _clip(g("sbmsnDcmntCn")),
+            "exclusions": _clip(g("ptcpPrpTrgtCn")), "official_url": None,
             "attachment_url": None, "posted_at": T.ymd_compact(g("frstRegDt")), "extra": extra,
         }
-        ev["category"] = cat_basis or ""
         site_cat = " > ".join(x for x in (g("lclsfNm"), g("mclsfNm")) if x) or None
-        # 온통청년 상세 페이지 주소 규칙은 확인하지 못해 만들지 않는다(정책번호로 검색 가능).
-        return Item("youthcenter", "온통청년", pid, None, site_cat, fields, ev, need), ""
+        raw = {"list": _raw(row)}
+        return Item("youthcenter", "온통청년", pid, None, site_cat, fields, ev, need, source_digest=_digest(raw),
+                    conflicts=conflicts, raw=raw, digest_version=DIGEST_VERSION, flags=flags)
+
+
+LINK_FIELDS = (("aplyUrlAddr", "신청 링크"), ("refUrlAddr1", "참고 링크 1"), ("refUrlAddr2", "참고 링크 2"))
+LINK_NEED = "공식 안내 링크 확인 필요"
+DIGEST_VERSION = 1
+# 이름상 조회수로 보이는 값. 매번 바뀌어 원문 변경으로 오인하지 않도록 원본 요약값에서만 뺀다(확인 전 추정, 시험 보고서에 존재 여부 표시)
+VOLATILE = {"inqCnt"}
+
+
+def _raw(row: dict) -> dict:
+    return {k: v for k, v in (row or {}).items() if k not in VOLATILE}
+
+
+def _digest(raw: dict) -> str:
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps(raw, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:20]

@@ -120,7 +120,15 @@ def main(argv=None) -> int:
     e.add_argument("--db", default=os.getenv("NOTICE_DB", str(ROOT / "data" / "notices.db")))
     e.add_argument("--out", default=os.getenv("NOTICE_OUT", str(ROOT / "data" / "public")))
     e.add_argument("--batch")
+    v = sub.add_parser("youthcenter-review", help="보관한 온통청년 응답 스냅숏으로 판정만 다시 실행(API 호출 없음)")
+    v.add_argument("--raw", required=True, help="youthcenter_raw.json.gz")
+    v.add_argument("--out", required=True)
+    v.add_argument("--today", help="신청 상태 기준일(YYYY-MM-DD)")
     args = ap.parse_args(argv)
+    if args.cmd == "youthcenter-review":
+        from .review_report import rereview
+        print("보고서:", rereview(args.raw, args.out, args.today))
+        return 0
 
     batch_id = args.batch or now_kst().date().isoformat()
     store = Store(args.db)
@@ -146,7 +154,15 @@ def main(argv=None) -> int:
                                          error="이번 실행에서 꺼 둠 (ENABLED_SOURCES 설정)")
                     print(f"[{src.info.key}] 꺼 둠 — 실행하지 않음")
                     continue
+                src.today = batch_id
                 outcomes[src.info.key] = run_source(store, src, batch_id, force=args.force)
+                if outcomes[src.info.key] == "성공" and os.getenv("DRY_RUN") == "1" and getattr(src, "decisions", None):
+                    # 시험 실행에서만: 판정 보고서와 응답 원본 스냅숏(인증키 없음)을 남긴다
+                    from .review_report import write_review
+                    try:
+                        write_review(src, Path(args.out) / "review", include_raw=True, secret=getattr(src, "key", None))
+                    except Exception as e:  # noqa: BLE001 — 보고서 실패가 수집 결과를 바꾸지 않게
+                        print(f"[{src.info.key}] 시험 보고서 작성 실패: {type(e).__name__}: {e}")
         data = export(store, sources, batch_id, args.out, include_manual=manual is not None,
                       outcomes=outcomes if args.cmd == "run" else None, dry_run=os.getenv("DRY_RUN") == "1")
     finally:
