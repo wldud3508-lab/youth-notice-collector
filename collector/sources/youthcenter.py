@@ -41,7 +41,13 @@ class YouthCenter(Source):
         try:
             r = self.http(API, params={"apiKeyNm": self.key, "pageNum": n, "pageSize": PAGE_SIZE, "rtnType": "json"})
         except Exception as e:  # noqa: BLE001
-            raise RuntimeError(redact(f"{n}쪽 요청 실패: {e}", self.key)) from e
+            # HTTP 오류여도 응답 본문(결과 코드·메시지)을 남겨 원인을 좁힌다. 주소·키는 남기지 않는다.
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                body = " ".join((getattr(resp, "text", "") or "")[:300].split())
+                raise RuntimeError(redact(f"{n}쪽 요청 실패: HTTP {resp.status_code}, 형식 "
+                                          f"{resp.headers.get('Content-Type', '?')}, 응답 본문 앞부분 {body!r}", self.key)) from e
+            raise RuntimeError(redact(f"{n}쪽 요청 실패: {type(e).__name__}", self.key)) from e
         diag = lambda: redact(f"HTTP {getattr(r, 'status_code', '?')}, 형식 {getattr(r, 'headers', {}).get('Content-Type', '?')}, "
                               f"앞부분 {' '.join((getattr(r, 'text', '') or '')[:120].split())!r}", self.key)
         try:
@@ -61,6 +67,12 @@ class YouthCenter(Source):
             total = int(pag.get("totCount"))
         except (TypeError, ValueError):
             total = None
+        self.page_log.append({"page": n, "http": getattr(r, "status_code", None), "resultCode": body.get("resultCode"),
+                              "resultMessage": body.get("resultMessage"), "count": len(res["youthPolicyList"]),
+                              "totCount": total, "pagging": {k: v for k, v in pag.items() if k != "apiKeyNm"}})
+        print(redact(f"[youthcenter] {n}쪽: HTTP {self.page_log[-1]['http']}, resultCode {body.get('resultCode')}, "
+                     f"resultMessage {body.get('resultMessage')!r}, 받은 {len(res['youthPolicyList'])}건, "
+                     f"API 전체 {total}건, 페이지 정보 {self.page_log[-1]['pagging']}", self.key))
         return res["youthPolicyList"], total
 
     def fetch(self, *, since: str | None = None) -> FetchResult:
@@ -69,8 +81,17 @@ class YouthCenter(Source):
         rows: list[dict] = []
         pages = 0
         total = None
+        self.page_log = []
         for n in range(1, MAX_PAGES + 1):
-            page, total = self._page(n)
+            try:
+                page, total = self._page(n)
+            except SourceUnavailable:
+                raise
+            except UnexpectedResponse as e:
+                # 앞 쪽까지 받은 것을 성공으로 처리하지 않는다. 누적 정보를 오류에 함께 남긴다.
+                raise UnexpectedResponse(f"{e} / 앞서 받은 {len(rows)}건(API 전체 {total}건, {pages}쪽) — 일부만 받아 실패 처리") from e
+            except Exception as e:  # noqa: BLE001
+                raise RuntimeError(f"{e} / 앞서 받은 {len(rows)}건(API 전체 {total}건, {pages}쪽) — 일부만 받아 실패 처리") from e
             pages += 1
             rows.extend(page)
             if not page or (total is not None and len(rows) >= total):

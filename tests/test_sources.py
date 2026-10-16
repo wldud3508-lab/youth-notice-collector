@@ -137,3 +137,49 @@ def test_youthcenter_incomplete_pages_fail():
         return FakeResp({"result": {"pagging": {"totCount": 250}, "youthPolicyList": [youth_row()] if params["pageNum"] == 1 else []}})
     with pytest.raises(UnexpectedResponse):
         YouthCenter(api_key="K", http=http).fetch()
+
+
+def test_youthcenter_http_400_keeps_body_and_partial_count_and_fails():
+    import requests
+    key = "TEST-SECRET-KEY-456"
+
+    class Bad:
+        status_code, headers = 400, {"Content-Type": "application/json"}
+        text = '{"resultCode":400,"resultMessage":"TEST 페이지 범위 오류"}'
+
+    def http(url, params=None, **_):
+        if params["pageNum"] == 4:
+            err = requests.HTTPError(f"400 Client Error for url: {url}?apiKeyNm={key}")
+            err.response = Bad()
+            raise err
+        return FakeResp({"resultCode": 200, "resultMessage": "OK",
+                         "result": {"pagging": {"totCount": 500, "pageNum": params["pageNum"]},
+                                    "youthPolicyList": [youth_row(plcyNo=f"T{params['pageNum']}-{i}") for i in range(100)]}})
+    yc = YouthCenter(api_key=key, http=http)
+    with pytest.raises(RuntimeError) as e:
+        yc.fetch()
+    msg = str(e.value)
+    assert key not in msg and "HTTP 400" in msg and "TEST 페이지 범위 오류" in msg
+    assert "앞서 받은 300건(API 전체 500건, 3쪽)" in msg
+    assert [p["resultCode"] for p in yc.page_log] == [200, 200, 200]
+
+
+def test_dry_run_scope_failure_not_hidden_by_earlier_success(tmp_path):
+    from collector.export import export
+    from collector.models import now_kst
+    from collector.store import Store
+    from tests.test_pipeline import FakeSource, item
+    st = Store(tmp_path / "t.db")
+    today = now_kst().date().isoformat()
+    gov = FakeSource("gov24", [item("gov24", "1")])
+    run_source = __import__("collector.run", fromlist=["run_source"]).run_source
+    run_source(st, gov, today, force=False, log=lambda *_: None)              # 오전 정식 실행
+    yc = FakeSource("youthcenter", error=RuntimeError("TEST 400"))
+    out = {"youthcenter": run_source(st, yc, today, force=False, log=lambda *_: None)}   # 시험 실행
+    d = export(st, [gov, yc], today, tmp_path / "out", include_manual=False, outcomes=out, dry_run=True)
+    assert d["meta"]["batch_status"] == "실패"
+    runs = {s["key"]: s["run"] for s in d["sources"]}
+    assert runs["youthcenter"]["this_run"] == "실패" and runs["gov24"]["this_run"] is None
+    assert runs["gov24"]["status"] == "성공"            # 참고 정보로만 남음
+    s = (tmp_path / "out" / "summary.md").read_text(encoding="utf-8")
+    assert "이번 실행 결과: **실패**" in s and "이번 실행 대상 아님" in s

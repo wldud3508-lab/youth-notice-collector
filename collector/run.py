@@ -23,15 +23,16 @@ MAX_ATTEMPTS = 3
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def run_source(store: Store, src, batch_id: str, *, force: bool, log=print) -> None:
+def run_source(store: Store, src, batch_id: str, *, force: bool, log=print) -> str:
+    """이번 실행에서 이 출처의 결과를 돌려준다(오늘 이전 시도·다른 실행의 결과와 구분)."""
     key = src.info.key
     prev = store.attempts(batch_id, key)
     if not force and any(r["status"] == "성공" for r in prev):
         log(f"[{key}] 오늘({batch_id}) 이미 성공 — 건너뜀")
-        return
+        return "건너뜀(오늘 이미 성공)"
     if not force and sum(1 for r in prev if r["status"] == "실패") >= MAX_ATTEMPTS:
         log(f"[{key}] 오늘 {MAX_ATTEMPTS}회 실패 — 더 시도하지 않음")
-        return
+        return "실패(오늘 재시도 한도)"
     since = store.last_success(key)
     attempt = store.start_run(batch_id, key, now_kst())
     try:
@@ -39,17 +40,17 @@ def run_source(store: Store, src, batch_id: str, *, force: bool, log=print) -> N
     except SourceUnavailable as e:
         store.finish_run(batch_id, key, attempt, now_kst(), status=e.status, error=str(e))
         log(f"[{key}] {e.status}: {e}")
-        return
+        return e.status
     except UnexpectedResponse as e:
         store.finish_run(batch_id, key, attempt, now_kst(), status="실패", error=f"응답 구조 이상: {e}")
         log(f"[{key}] 실패(응답 구조): {e}")
-        return
+        return "실패"
     except Exception as e:  # noqa: BLE001 — 한 출처의 오류가 전체를 멈추지 않게
         store.finish_run(batch_id, key, attempt, now_kst(), status="실패", error=f"{type(e).__name__}: {e}"[:500])
         log(f"[{key}] 실패: {e}")
         if os.getenv("DEBUG"):
             traceback.print_exc()
-        return
+        return "실패"
     counts = {"new": 0, "changed": 0, "same": 0, "reclassified": 0, "meta_changed": 0}
     backfilled = unverified = 0
     now = now_kst()
@@ -69,6 +70,7 @@ def run_source(store: Store, src, batch_id: str, *, force: bool, log=print) -> N
         f"(신규 {counts['new']}, 중요 원문 변경 {counts['changed']}(그중 변경 항목 확인 불가 {unverified}), "
         f"원본 메타데이터 변경 {counts['meta_changed']}, 분류 규칙 변경 {counts['reclassified']}, "
         f"원문 보완(데이터 이전) {backfilled})")
+    return "성공"
 
 
 class ManualSource:
@@ -129,6 +131,7 @@ def main(argv=None) -> int:
     manual_path = ROOT / "manual" / "notices.json"
     manual = ManualSource(manual_path) if manual_path.exists() else None
     try:
+        outcomes: dict[str, str] = {}
         if args.cmd == "run":
             targets = sources + ([manual] if manual else [])
             enabled = enabled_sources()
@@ -143,8 +146,9 @@ def main(argv=None) -> int:
                                          error="이번 실행에서 꺼 둠 (ENABLED_SOURCES 설정)")
                     print(f"[{src.info.key}] 꺼 둠 — 실행하지 않음")
                     continue
-                run_source(store, src, batch_id, force=args.force)
-        data = export(store, sources, batch_id, args.out, include_manual=manual is not None)
+                outcomes[src.info.key] = run_source(store, src, batch_id, force=args.force)
+        data = export(store, sources, batch_id, args.out, include_manual=manual is not None,
+                      outcomes=outcomes if args.cmd == "run" else None, dry_run=os.getenv("DRY_RUN") == "1")
     finally:
         store.close()
     print(f"배치 {batch_id}: {data['meta']['batch_status']} · 누적 {len(data['notices'])}건 → {args.out}")

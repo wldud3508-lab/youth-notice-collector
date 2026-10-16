@@ -106,7 +106,13 @@ def status_counts(notices: list[dict], today: str) -> dict:
     return c
 
 
-def batch_status(srcs: list[dict]) -> str:
+def batch_status(srcs: list[dict], outcomes: dict | None = None) -> str:
+    if outcomes:   # 이번 실행에서 선택한 출처의 결과만으로 판단(과거 성공 기록은 참고 정보)
+        ok_like = [v for v in outcomes.values() if v in ("성공", "건너뜀(오늘 이미 성공)")]
+        fail = [v for v in outcomes.values() if v.startswith("실패")]
+        if not ok_like:
+            return "실패"
+        return "부분 성공" if fail else "정상 완료"
     st = [s["run"]["status"] for s in srcs]
     ok, fail = st.count("성공"), st.count("실패")
     if ok == 0:
@@ -114,15 +120,20 @@ def batch_status(srcs: list[dict]) -> str:
     return "부분 성공" if fail else "정상 완료"
 
 
-def export(store: Store, sources, batch_id: str, out_dir: str | Path, *, include_manual: bool) -> dict:
+def export(store: Store, sources, batch_id: str, out_dir: str | Path, *, include_manual: bool,
+           outcomes: dict | None = None, dry_run: bool = False) -> dict:
     out = Path(out_dir)
     (out / "csv").mkdir(parents=True, exist_ok=True)
     notices = merge_records(store.all_records())
     srcs = build_sources(store, sources, batch_id, include_manual)
+    for s_ in srcs:   # 이번 실행에서 실제로 돌린 결과(없으면 이번 실행 대상 아님)
+        s_["run"]["this_run"] = (outcomes or {}).get(s_["key"]) if outcomes is not None else None
     data = {
         "meta": {
             "mode": "collected", "schema_version": "0.1", "batch_id": batch_id, "reference_date": batch_id,
-            "generated_at": iso(now_kst()), "batch_status": batch_status(srcs),
+            "generated_at": iso(now_kst()), "batch_status": batch_status(srcs, outcomes),
+            "run_scope": {"dry_run": dry_run, "selected": sorted(outcomes) if outcomes else None,
+                          "outcomes": outcomes or None},
             "collector_version": VERSION, "collect_trigger_url": os.getenv("COLLECT_TRIGGER_URL") or None,
         },
         "sources": srcs,
@@ -250,20 +261,26 @@ def todays_findings(data: dict) -> list[str]:
 
 def summary_md(data: dict) -> str:
     m = data["meta"]
-    lines = [f"# 실행 결과 요약 — {m['batch_id']}", "", f"- 배치 상태: **{m['batch_status']}**",
+    scope = m.get("run_scope") or {}
+    head = ["- 실행 종류: 시험 실행(누적 데이터 사본, 저장·배포 안 함)", ""] if scope.get("dry_run") else []
+    sel = ", ".join(f"{k}: {v}" for k, v in (scope.get("outcomes") or {}).items()) or "없음"
+    lines = [f"# 실행 결과 요약 — {m['batch_id']}", ""] + head + [
+             f"- 이번 실행 결과: **{m['batch_status']}** (이번에 돌린 출처만으로 판단 — {sel})",
+             "- 이번에 돌리지 않은 출처의 '오늘 마지막 기록'은 참고 정보이며 이번 실행 결과에 포함되지 않습니다.",
              f"- 생성 시각: {m['generated_at']}", f"- 누적 공고: {len(data['notices'])}건 (마감 포함, 삭제하지 않고 보관)",
              f"- 기준일 {m['reference_date']} 신청 상태: " + " · ".join(f"{k} {m['status_counts'].get(k, 0)}건" for k in STATUS_ORDER),
              "- 확인 현황(분류 성공 ≠ 확인 완료): " + " · ".join(
                  f"{k} {v}건" for k, v in m.get("review_summary", {}).items() if not k.startswith("기간 유형")),
              "- 신청기간 유형: " + " · ".join(
                  f"{k[7:]} {v}건" for k, v in m.get("review_summary", {}).items() if k.startswith("기간 유형")),
-             "", "| 출처 | 상태 | 수집 | 신규 | 중요 원문 변경 | 그중 변경 항목 확인 불가 | 원본 메타데이터 변경 | 분류 규칙 변경 | 원문 보완(데이터 이전) | 오류 | 마지막 성공 |",
-             "|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|"]
+             "", "| 출처 | 이번 실행 결과 | 오늘 마지막 기록(참고) | 수집 | 신규 | 중요 원문 변경 | 그중 변경 항목 확인 불가 | 원본 메타데이터 변경 | 분류 규칙 변경 | 원문 보완(데이터 이전) | 오류 | 마지막 성공 |",
+             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|"]
     for s in data["sources"]:
         r = s["run"]
         na = "집계 안 됨"
         f = lambda k: r.get(k) if r.get(k) is not None else na
-        lines.append(f"| {s['name']} | {r['status']} | {f('collected')} | {f('new')} | {f('changed')} | {f('unverified')} | {f('meta_changed')} | {f('reclassified')} | {f('raw_backfilled')} | "
+        this = r.get("this_run") or "이번 실행 대상 아님"
+        lines.append(f"| {s['name']} | {this} | {r['status']} | {f('collected')} | {f('new')} | {f('changed')} | {f('unverified')} | {f('meta_changed')} | {f('reclassified')} | {f('raw_backfilled')} | "
                      f"{(r['error'] or '').replace('|', '/')} | {r['last_success_at'] or '없음'} |")
     if m["batch_status"] == "실패":
         lines += ["", "> 성공한 출처가 없습니다. 정상 완료가 아닙니다."]

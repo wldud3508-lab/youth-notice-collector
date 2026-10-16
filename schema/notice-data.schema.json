@@ -26,7 +26,8 @@
         "batch_id": { "type": "string", "description": "하루 단위 배치 ID. 실제 수집은 KST 날짜(예: 2026-10-14)" },
         "reference_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "신청 상태·D-day 계산 기준일(KST)" },
         "generated_at": { "$ref": "#/$defs/datetime" },
-        "batch_status": { "enum": ["정상 완료", "부분 성공", "실패", null], "description": "모든 출처 성공 / 일부 성공 / 성공한 출처 없음" },
+        "batch_status": { "enum": ["정상 완료", "부분 성공", "실패", null], "description": "이번 실행에서 돌린 출처만으로 판단: 모두 성공 / 일부 성공 / 성공 없음" },
+        "run_scope": { "type": ["object", "null"], "description": "dry_run(시험 실행 여부), selected(이번에 돌린 출처), outcomes(출처별 이번 실행 결과)" },
         "collector_version": { "$ref": "#/$defs/nstr" },
         "status_counts": { "type": "object", "description": "기준일 신청 상태별 건수와 누적 건수",
           "additionalProperties": { "type": "integer", "minimum": 0 } },
@@ -67,6 +68,7 @@
             "error": { "$ref": "#/$defs/nstr" },
             "last_success_at": { "$ref": "#/$defs/datetime" },
             "attempts": { "type": ["integer", "null"], "minimum": 0 },
+            "this_run": { "type": ["string", "null"], "description": "이번 실행에서의 결과. null 이면 이번 실행 대상 아님(status 는 오늘 마지막 기록)" },
             "fetched_raw": { "type": ["integer", "null"], "minimum": 0, "description": "출처에서 받은 전체 건수(분류·필터 전)" }
           }
         }
