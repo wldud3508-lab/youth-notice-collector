@@ -120,6 +120,18 @@ jobs:
           if [ "$DRY_RUN" = "1" ]; then echo "> **시험 실행** — 누적 데이터 사본으로 돌렸고 저장·화면 배포는 하지 않았습니다." >> "$GITHUB_STEP_SUMMARY"; fi
           cat "$NOTICE_OUT/summary.md" >> "$GITHUB_STEP_SUMMARY" || echo "요약 파일 없음" >> "$GITHUB_STEP_SUMMARY"
 
+      # 시험 실행에서만: 판정 보고서·판정표(CSV)·응답 원본 스냅숏을 내려받을 수 있게 7일 보관(인증키 없음, 저장소·화면에는 안 올림)
+      - name: 시험 결과 파일 보관
+        if: always() && env.DRY_RUN == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: trial-review-${{ github.run_id }}
+          path: |
+            trial/public/review/
+            trial/public/summary.md
+          retention-days: 7
+          if-no-files-found: warn
+
       - name: 관리 화면 묶기
         if: always() && env.DRY_RUN != '1'
         run: |
