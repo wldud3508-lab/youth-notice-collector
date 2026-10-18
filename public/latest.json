@@ -4,7 +4,7 @@
   "schema_version": "0.1",
   "batch_id": "2026-10-18",
   "reference_date": "2026-10-18",
-  "generated_at": "2026-10-18T20:20:16+09:00",
+  "generated_at": "2026-10-18T21:03:12+09:00",
   "batch_status": "정상 완료",
   "run_scope": {
    "dry_run": false,
@@ -13,7 +13,7 @@
     "youthcenter"
    ],
    "outcomes": {
-    "youthcenter": "성공",
+    "youthcenter": "건너뜀(오늘 이미 성공)",
     "gov24": "건너뜀(오늘 이미 성공)"
    }
   },
@@ -193,7 +193,7 @@
     "last_success_at": "2026-10-18T20:20:16+09:00",
     "attempts": 2,
     "fetched_raw": 3262,
-    "this_run": "성공"
+    "this_run": "건너뜀(오늘 이미 성공)"
    }
   },
   {
