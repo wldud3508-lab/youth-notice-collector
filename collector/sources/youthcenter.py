@@ -17,6 +17,7 @@ from .. import rules as R
 from .. import textutil as T
 from ..models import Item
 from .base import FetchResult, Source, SourceInfo, SourceUnavailable, UnexpectedResponse, http_get, redact
+from . import youthcenter_rules as YR
 from .youthcenter_rules import INCLUDE, Decision, decide
 
 API = "https://www.youthcenter.go.kr/go/ythip/getPlcy"
@@ -176,6 +177,15 @@ class YouthCenter(Source):
             biz = " ~ ".join(x for x in (T.ymd_compact(bgn) or bgn, T.ymd_compact(end) or end) if x)
             notes.append({"field": "period_text", "note": "사업기간(신청기간 아님, 접수 여부 판단에 쓰지 않음): "
                           + " / ".join(x for x in (biz, etc) if x)})
+        aux = None
+        if not aply:
+            aux = _aux_deadline({"plcySprtCn": content, "plcyAplyMthdCn": g("plcyAplyMthdCn")})
+            if aux:
+                # 신청기간 필드가 비어 있어 지원내용·신청방법의 기한 문장을 보조로 분류. 날짜는 계산하지 않음
+                pr.kind, pr.reason = R.KIND_EVENT, f"{aux['field_label']}의 기한 문장(보조 추출)"
+                ev["period_text"] += f" / 보조 추출({aux['field_label']}): {aux['sentence'][:160]}"
+                notes.append({"field": "period_text", "note": f"신청기간 필드 비어 있음 — {aux['field_label']}에서 기한 문장을 찾아 "
+                              f"'사유 발생 후 기한'으로 분류(절대 날짜는 만들지 않음): {aux['sentence'][:160]}"})
         if pr.needs_period_check:
             need += ["apply_start", "apply_end"]
             ev["apply_end"] = f"신청기간 유형: {pr.kind}" + (f" ({pr.reason})" if pr.reason else "")
@@ -210,6 +220,15 @@ class YouthCenter(Source):
             ev["income_condition"] = f"API 수치 earnMinAmt={g('earnMinAmt')}, earnMaxAmt={g('earnMaxAmt')} (단위 미확인)"
 
         stype, st_ev = T.support_type(name, content)
+        if cat == "장학금" and dec.aid_kind:
+            # 장학금 분야 안에서 대출·이자지원·채무조정을 무상 장학금과 구분
+            stype, st_ev = YR.AID_SUPPORT_TYPE[dec.aid_kind], f"지원 유형 {dec.aid_kind}"
+            aid_note = {YR.AID_LOAN: "학자금대출 — 새 대출 상품(상환 의무 있음), 무상 장학금이 아님",
+                        YR.AID_INTEREST: "이자지원 — 대출 이자를 지원, 무상 장학금이 아님",
+                        YR.AID_RECOVERY: "신용회복·채무조정 — 연체·채무 해소 지원, 무상 장학금이 아님",
+                        YR.AID_REPAY: "대출 상환지원 — 이미 받은 대출의 상환액을 지원(새 대출·새 상환 의무 아님), 무상 장학금이 아님"}
+            if dec.aid_kind in aid_note:
+                notes.append({"field": "support_type", "note": aid_note[dec.aid_kind]})
         if not stype:
             need.append("support_type")
         elif st_ev:
@@ -233,6 +252,10 @@ class YouthCenter(Source):
                 bad.append({"type": label, "field": fld, "text": v[:200]})
         apply_url = next((x["url"] for x in links if x["field"] == "aplyUrlAddr"), None)
         flags = {"links": links}
+        if aux:
+            flags["period_aux"] = aux
+        if cat == "장학금" and dec.aid_kind:
+            flags["aid_kind"] = dec.aid_kind
         if bad:
             flags["link_texts"] = bad
             notes.append({"field": "links", "note": "주소 형식이 아닌 링크 값 " + ", ".join(f"{x['type']} '{x['text'][:60]}'" for x in bad)})
@@ -262,7 +285,7 @@ class YouthCenter(Source):
             "apply_start": pr.start, "apply_end": pr.end, "apply_end_time": pr.end_time,
             "period_kind": pr.kind, "period_flags": pr.flags, "period_month_end": pr.month_end,
             "period_closed_year": pr.closed_year, "review_notes": notes,
-            "period_text": aply, "apply_method": _clip(g("plcyAplyMthdCn")),
+            "period_text": aply or (f"[{aux['field_label']}에서 보조 추출] {aux['sentence']}" if aux else None), "apply_method": _clip(g("plcyAplyMthdCn")),
             "apply_url": apply_url, "required_docs": _clip(g("sbmsnDcmntCn")),
             "exclusions": _clip(g("ptcpPrpTrgtCn")), "official_url": None,
             "attachment_url": None, "posted_at": T.ymd_compact(g("frstRegDt")), "extra": extra,
@@ -271,6 +294,34 @@ class YouthCenter(Source):
         raw = {"list": _raw(row)}
         return Item("youthcenter", "온통청년", pid, None, site_cat, fields, ev, need, source_digest=_digest(raw),
                     conflicts=conflicts, raw=raw, digest_version=DIGEST_VERSION, flags=flags)
+
+
+# 신청기간 필드가 비었을 때만 보는 기한 문장. 기한 표현 바로 뒤의 동사로 신청·접수 기한과 심사·지급 처리기한을 구분한다
+_AUX_DEADLINE = re.compile(r"(?:(?:로|으로)\s*부터\s*\d+\s*(?:일|개월|년)(?:이\s*되는\s*날)?|속한\s*달\s*말일|\d+\s*(?:일|개월|년)\s*이내)"
+                           r"[^.。\n※○]{0,12}?(신청|접수|제출|지급|처리|통보|결정|심사|입금|송금|교부)")
+_APPLY_VERBS = {"신청", "접수", "제출"}
+_AUX_FIELDS = (("plcySprtCn", "지원내용"), ("plcyAplyMthdCn", "신청방법"))
+
+
+def _sentence_at(t: str, start: int, end: int) -> str:
+    a = max(t.rfind(ch, 0, start) for ch in ".。\n※○") + 1
+    ends = [i for i in (t.find(ch, end) for ch in ".。\n※○") if i != -1]
+    return T.clean(t[a:min(ends) if ends else len(t)])
+
+
+def _aux_deadline(vals: dict) -> dict | None:
+    """신청·접수 기한 문장만 돌려준다. '접수 후 30일 이내 지급' 같은 처리기한은 신청기한으로 쓰지 않는다."""
+    for fld, label in _AUX_FIELDS:
+        t = T.clean(vals.get(fld))
+        if not t:
+            continue
+        for m in _AUX_DEADLINE.finditer(t):
+            if m.group(1) not in _APPLY_VERBS:
+                continue
+            sent = _sentence_at(t, m.start(), m.end())
+            if R.classify_period(sent).kind == R.KIND_EVENT or R.classify_period(m.group(0)).kind == R.KIND_EVENT:
+                return {"field": fld, "field_label": label, "sentence": sent, "kind": R.KIND_EVENT, "verb": m.group(1)}
+    return None
 
 
 LINK_FIELDS = (("aplyUrlAddr", "신청 링크"), ("refUrlAddr1", "참고 링크 1"), ("refUrlAddr2", "참고 링크 2"))

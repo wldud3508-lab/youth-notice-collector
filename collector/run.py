@@ -124,10 +124,15 @@ def main(argv=None) -> int:
     v.add_argument("--raw", required=True, help="youthcenter_raw.json.gz")
     v.add_argument("--out", required=True)
     v.add_argument("--today", help="신청 상태 기준일(YYYY-MM-DD)")
+    v.add_argument("--before", help="비교할 수정 전 youthcenter_decisions.csv (선택)")
     args = ap.parse_args(argv)
     if args.cmd == "youthcenter-review":
         from .review_report import rereview
-        print("보고서:", rereview(args.raw, args.out, args.today))
+        rep = rereview(args.raw, args.out, args.today)
+        print("보고서:", rep)
+        if args.before:
+            from .review_report import compare
+            print("비교:", compare(args.before, Path(args.out) / "youthcenter_decisions.csv", Path(args.out) / "compare.md"))
         return 0
 
     batch_id = args.batch or now_kst().date().isoformat()
@@ -156,11 +161,13 @@ def main(argv=None) -> int:
                     continue
                 src.today = batch_id
                 outcomes[src.info.key] = run_source(store, src, batch_id, force=args.force)
-                if outcomes[src.info.key] == "성공" and os.getenv("DRY_RUN") == "1" and getattr(src, "decisions", None):
-                    # 시험 실행에서만: 판정 보고서와 응답 원본 스냅숏(인증키 없음)을 남긴다
+                if outcomes[src.info.key] == "성공" and getattr(src, "decisions", None):
+                    # 판정 보고서·판정표·분류 검토 목록은 매 실행 남긴다(분류 검토는 DB에 넣지 않으므로 이 파일로 조회).
+                    # 응답 원본 스냅숏은 시험 실행에서만(인증키 없음)
                     from .review_report import write_review
                     try:
-                        write_review(src, Path(args.out) / "review", include_raw=True, secret=getattr(src, "key", None))
+                        write_review(src, Path(args.out) / "review", include_raw=os.getenv("DRY_RUN") == "1",
+                                     secret=getattr(src, "key", None))
                     except Exception as e:  # noqa: BLE001 — 보고서 실패가 수집 결과를 바꾸지 않게
                         print(f"[{src.info.key}] 시험 보고서 작성 실패: {type(e).__name__}: {e}")
         data = export(store, sources, batch_id, args.out, include_manual=manual is not None,

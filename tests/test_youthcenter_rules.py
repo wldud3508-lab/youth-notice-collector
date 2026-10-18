@@ -24,7 +24,15 @@ def dec(**kw):
     (dict(plcyNm="(광양시)난임부부 진단검사비 지원", plcyExplnCn="난임부부의 최초 진단검사비를 지원",
           plcySprtCn="난임 진단검사비 지원 부부당 최대 20만원 지원"), Y.REVIEW, "생활비", Y.RV_MEDICAL_BIRTH),
     (dict(plcyNm="빈곤 청년에 대한 근로인센티브 확대", plcyExplnCn="빈곤 청년에 대한 근로인센티브 확대",
-          plcySprtCn="근로·사업소득 공제 40만원+30% 공제 등록금 공제 대학생의 등록금을 지출한 경우"), Y.REVIEW, None, Y.RV_CASH_ONLY),
+          plcySprtCn="근로·사업소득 공제 40만원+30% 공제 등록금 공제 대학생의 등록금을 지출한 경우 해당 지출금액을 소득 산정 시 제외, "
+                     "청년수당 등 다른 수당과 별도"), Y.REVIEW, "생활비", Y.RV_DEDUCTION),
+    # 두 번째 시험에서 지적된 예시(실제 원문을 받지 못해 요지만 옮긴 시험 문장)
+    (dict(plcyNm="2026 청년 관광두레 플러스사업", plcyExplnCn="지역 청년의 관광 분야 정착 지원",
+          plcySprtCn="관광사업체 창업 및 사업화 자금 최대 3,000만원, 컨설팅"), Y.EXCLUDE, None, Y.EX_BUSINESS),
+    (dict(plcyNm="청년안심주택 공급(매입)", plcyExplnCn="민간 주택을 매입하여 청년에게 공급",
+          plcySprtCn="추진 경과: 청년·신혼부부 주거비 지원계획 수립, 주택 건립 기준 개정"), Y.REVIEW, "주거비", Y.RV_HOUSING_SUPPLY),
+    (dict(plcyNm="청년안심주택 입주자 지원", plcyExplnCn="민간 주택을 매입하여 청년에게 공급",
+          plcySprtCn="입주 청년에게 임대보증금 일부 지원"), Y.INCLUDE, "주거비", ""),   # 실제 개인 비용 지원이 있으면 포함
     (dict(plcyNm="대학생 천원의 아침밥 지원 확대", plcyExplnCn="아침식사 결식률이 높은 대학생에게 쌀 식단 제공",
           plcySprtCn="대학생들을 대상으로 쌀을 활용한 아침식사를 1천원에 제공"), Y.REVIEW, "생활비", Y.RV_INKIND),
     (dict(plcyNm="청년쉐어하우스 조성 및 운영", plcyExplnCn="주거취약계층 청년에게 저렴한 비용(월5만원)으로 주거를 지원",
@@ -135,3 +143,79 @@ def test_report_refuses_to_write_key(tmp_path):
     with pytest.raises(RuntimeError):
         write_review(yc, tmp_path, include_raw=True, secret=key)
     assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("title, content, kind, stype", [
+    ("취업 후 상환 학자금대출_등록금대출", "등록금 대출, 소득 발생 후 상환", "학자금대출", "대출"),
+    ("대학생 학자금대출 이자 지원", "한국장학재단을 통해 받은 대출금의 이자 지원", "이자지원", "이자지원"),
+    ("학자금 대출 신용회복 지원", "연체자 분할상환 및 채무조정", "신용회복·채무조정", "기타"),
+    ("OO시 대학생 장학금", "성적우수 대학생 장학금 100만원 지급", "장학금", "무상지원"),
+])
+def test_scholarship_aid_kinds_not_shown_as_free_grant(title, content, kind, stype):
+    d = dec(plcyNm=title, plcySprtCn=content, plcyExplnCn="대학생 학비 부담 완화")
+    assert d.verdict == Y.INCLUDE and d.category == "장학금" and d.aid_kind == kind
+    rec = YouthCenter(api_key="K").map_row(youth_row(plcyNm=title, plcySprtCn=content, plcyExplnCn="대학생 학비 부담 완화"))[0].to_record()
+    assert rec["support_type"] == stype and rec["flags"]["aid_kind"] == kind
+    if kind != "장학금":
+        assert any("무상 장학금이 아님" in x["note"] for x in rec["review_notes"])
+
+
+def test_basis_says_only_what_was_checked():
+    d = dec(plcyNm="청년 정착 지원금", plcyExplnCn="청년 정착", plcySprtCn="1인당 월 30만원 지급")
+    assert d.verdict == Y.INCLUDE and "정책명·지원목적·지원내용에서 사업화·사업장 비용" in d.basis_text()
+    # 지원내용에 '창업'이 대상 설명으로만 나오면 보류하지 않음
+    d = dec(plcyNm="청년 정착 지원금", plcyExplnCn="청년 정착", plcySprtCn="1인당 월 30만원 지급, 창업 시 추가")
+    assert d.verdict == Y.INCLUDE
+    # 지원내용에서 실제 지원 비용이 사업화 자금이면 개인 생활비로 넣지 않음(근거에 지원내용 표기)
+    d = dec(plcyNm="청년 정착 지원", plcyExplnCn="청년 정착", plcySprtCn="창업 기업 사업화 자금 최대 2,000만원")
+    assert d.verdict == Y.EXCLUDE and d.reason == Y.EX_BUSINESS and "지원내용에 '사업화 자금'" in d.basis_text()
+
+
+def test_aux_deadline_when_apply_field_empty():
+    row = youth_row(plcyNm="충주시 청년 입영지원금", plcyExplnCn="입영하는 청년 복지 증진", aplyYmd="",
+                    bizPrdBgngYmd="20250106", bizPrdEndYmd="20251231",
+                    plcySprtCn="-지원내용 : 입영지원금 10만원 지원 -지급방법 : 지역화폐카드 충전 "
+                               "※입영(소집)일로부터 6개월이 되는 날이 속한 달 말일까지 신청 가능")
+    rec = YouthCenter(api_key="K").map_row(row)[0].to_record()
+    assert rec["period_kind"] == "사유 발생 후 기한"
+    assert rec["apply_start"] is None and rec["apply_end"] is None and rec["period_month_end"] is None
+    assert rec["flags"]["period_aux"]["field"] == "plcySprtCn"
+    assert "6개월이 되는 날이 속한 달 말일까지" in rec["flags"]["period_aux"]["sentence"]
+    assert rec["period_text"].startswith("[지원내용에서 보조 추출]")
+    assert "2025" not in rec["period_text"]                      # 사업기간으로 대체하지 않음
+    # 기한 문장이 없으면 그대로 '원문 기간 미기재'
+    rec = YouthCenter(api_key="K").map_row(youth_row(aplyYmd=""))[0].to_record()
+    assert rec["period_kind"] == "원문 기간 미기재" and "period_aux" not in rec["flags"]
+
+
+def test_compare_before_after(tmp_path):
+    import csv
+    from collector.review_report import compare
+    head = ["판정", "분야(잠정 포함)", "정책번호", "정책명"]
+    for name, rows in (("a.csv", [["포함", "생활비", "1", "관광두레"], ["포함", "주거비", "2", "월세"]]),
+                       ("b.csv", [["분류 검토", "생활비", "1", "관광두레"], ["포함", "주거비", "2", "월세"]])):
+        with open(tmp_path / name, "w", encoding="utf-8-sig", newline="") as f:
+            csv.writer(f).writerows([head] + rows)
+    r = compare(tmp_path / "a.csv", tmp_path / "b.csv", tmp_path / "c.md")
+    assert r["moved"] == 1 and "관광두레" in (tmp_path / "c.md").read_text(encoding="utf-8")
+
+
+def test_dry_run_summary_splits_new_and_points_to_artifacts(tmp_path):
+    from collector.export import export
+    from collector.models import now_kst
+    from collector.run import run_source
+    from collector.store import Store
+    from tests.test_pipeline import FakeSource, item
+    st = Store(tmp_path / "t.db")
+    today = now_kst().date().isoformat()
+    gov = FakeSource("gov24", [item("gov24", "1")])
+    run_source(st, gov, today, force=False, log=lambda *_: None)                 # 오전 정식 실행의 신규 1건
+    yc = FakeSource("youthcenter", [item("youthcenter", str(i), title=f"T{i}") for i in range(20)])
+    out = {"youthcenter": run_source(st, yc, today, force=False, log=lambda *_: None)}
+    export(st, [gov, yc], today, tmp_path / "out", include_manual=False, outcomes=out, dry_run=True)
+    s = (tmp_path / "out" / "summary.md").read_text(encoding="utf-8")
+    assert "이번 실행(youthcenter) 20건 · 오늘 전체 21건 (이번 실행 대상이 아닌 출처 1건 포함)" in s
+    assert "관리 화면 '오늘 신규'에서 확인" not in s
+    assert "review/new_this_run.csv" in s
+    rows = (tmp_path / "out" / "review" / "new_this_run.csv").read_text(encoding="utf-8-sig").splitlines()
+    assert len(rows) == 21                                                       # 머리글 + 이번 실행 신규 20

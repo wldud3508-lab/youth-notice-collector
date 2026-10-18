@@ -154,7 +154,18 @@ def export(store: Store, sources, batch_id: str, out_dir: str | Path, *, include
     rep = out / "review" / "youthcenter_report.md"
     if dry_run and outcomes and outcomes.get("youthcenter") == "성공" and rep.exists():
         extra = ["", rep.read_text(encoding="utf-8")]
+    elif outcomes and outcomes.get("youthcenter") == "성공" and (out / "review" / "youthcenter_review_needed.csv").exists():
+        # 정식 실행: 분류 검토 목록이 DB에 없다는 점과 위치만 요약에 남긴다
+        with (out / "review" / "youthcenter_review_needed.csv").open(encoding="utf-8-sig", newline="") as f:
+            n = sum(1 for _ in csv.reader(f)) - 1
+        extra = ["", f"- 온통청년 분류 검토 {n}건: 미확정·DB 미반영(제외 아님, 검토 완료 아님). "
+                     "data 브랜치 public/review/youthcenter_review_needed.csv 에서 확인"]
     (out / "summary.md").write_text(summary_md(data) + "\n".join(extra), encoding="utf-8")
+    if dry_run and outcomes:
+        # 시험 실행은 화면에 배포하지 않으므로, 이번 실행 출처의 신규 목록을 Artifacts 로 올라가는 폴더에 따로 둔다
+        (out / "review").mkdir(exist_ok=True)
+        write_csv(out / "review" / "new_this_run.csv",
+                  [n for n in notices if is_new(n) and n["sources"][0]["source_key"] in outcomes], today)
     return data
 
 
@@ -246,9 +257,22 @@ def todays_findings(data: dict) -> list[str]:
     out = ["", f"## 오늘 발견 ({today})", "",
            "> 신규는 '이 수집 목록에 처음 들어온 공고'이고, 원문 변경은 '출처의 글이 바뀐 것'입니다. "
            "어느 쪽도 그 자체로 모집이 새로 시작됐다는 뜻은 아닙니다. 게시·등록일과 신청기간 원문을 함께 보세요.", ""]
-    out.append(f"### 신규 {len(new)}건")
+    scope = m.get("run_scope") or {}
+    sel = set(scope.get("selected") or [])
+    if sel:   # 이번 실행에서 돌린 출처의 신규와, 오늘 다른 실행(예: 오전 정식 실행)의 신규를 나눈다
+        this = [(n, h) for n, h in new if n["sources"][0]["source_key"] in sel]
+        other = len(new) - len(this)
+        out.append(f"### 신규 — 이번 실행({', '.join(sorted(sel))}) {len(this)}건 · 오늘 전체 {len(new)}건"
+                   + (f" (이번 실행 대상이 아닌 출처 {other}건 포함)" if other else ""))
+        new = this + [x for x in new if x not in this]
+    else:
+        out.append(f"### 신규 {len(new)}건")
     if len(new) > 15:
-        out.append(f"- (처음 연결한 출처 등으로 많아서 15건만 표시, 나머지 {len(new) - 15}건은 관리 화면 '오늘 신규'에서 확인)")
+        if scope.get("dry_run"):
+            out.append(f"- 15건만 표시. 시험 실행이라 관리 화면에는 배포되지 않았습니다. 나머지 {len(new) - 15}건은 이 실행의 "
+                       "Artifacts(trial-review-…)에 있는 review/new_this_run.csv 에서 확인하세요")
+        else:
+            out.append(f"- (처음 연결한 출처 등으로 많아서 15건만 표시, 나머지 {len(new) - 15}건은 관리 화면 '오늘 신규'에서 확인)")
     for n, h in new[:15]:
         out += [f"- **{n['title']}** ({n.get('organizer') or '기관 미기재'}) · [{n['category']}] {n.get('region') or '지역 미기재'}",
                 f"  - 지원대상: {_short(n.get('target_text'))}",
