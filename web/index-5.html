@@ -1,0 +1,995 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>청년 공고 관리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: 운영 도구 — 상단 고정 샘플 띠 + 보기 탭 + 필터 줄, 아래 목록/상세 2단(좁은 화면은 1단 전환) */
+:root{
+  --bg:#F3F5F8; --surface:#FFFFFF; --surface-2:#EEF1F5; --ink:#18212D; --muted:#5B6676; --faint:#8A94A3;
+  --line:#DCE1E8; --accent:#1F4BB0; --accent-soft:#E4EBFA;
+  --ok:#1C7A4B; --ok-soft:#E1F2E8; --warn:#9A5700; --warn-soft:#FBEFD9; --bad:#B3261E; --bad-soft:#FBE4E2;
+  --sample:#6A3DA3; --sample-soft:#EFE7FA;
+  --c-contest:#C2410C; --c-scholar:#1F4BB0; --c-living:#1C7A4B; --c-housing:#7C3AED;
+  --font-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161D; --surface:#18202A; --surface-2:#1F2935; --ink:#E6EBF2; --muted:#A3AEBD; --faint:#76818F;
+  --line:#2C3746; --accent:#8AA9F2; --accent-soft:#22314F;
+  --ok:#6FCF97; --ok-soft:#173326; --warn:#F2B85B; --warn-soft:#3A2C12; --bad:#F2867E; --bad-soft:#3D1D1B;
+  --sample:#C3A3F0; --sample-soft:#2E2340;
+  --c-contest:#F59E6B; --c-scholar:#8AA9F2; --c-living:#6FCF97; --c-housing:#B79CF5; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#11161D; --surface:#18202A; --surface-2:#1F2935; --ink:#E6EBF2; --muted:#A3AEBD; --faint:#76818F;
+  --line:#2C3746; --accent:#8AA9F2; --accent-soft:#22314F;
+  --ok:#6FCF97; --ok-soft:#173326; --warn:#F2B85B; --warn-soft:#3A2C12; --bad:#F2867E; --bad-soft:#3D1D1B;
+  --sample:#C3A3F0; --sample-soft:#2E2340;
+  --c-contest:#F59E6B; --c-scholar:#8AA9F2; --c-living:#6FCF97; --c-housing:#B79CF5; color-scheme:dark;}
+
+*{box-sizing:border-box}
+body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.55;}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12.5px}
+
+.wrap{padding-inline:16px;max-width:1440px;margin-inline:auto}
+
+/* sample strip */
+.sample-strip{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--sample);color:var(--surface);}
+.sample-strip .wrap{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;padding-block:7px;font-size:13px}
+.sample-strip strong{letter-spacing:.02em}
+.sample-strip.loaded{background:var(--accent)}
+
+header.top{background:var(--surface);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;padding-block:14px}
+.brand h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.01em}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:7px 12px;cursor:pointer;font-weight:500;font-size:13px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+.btn.ghost{background:transparent}
+
+/* views */
+nav.views{background:var(--surface);border-bottom:1px solid var(--line)}
+nav.views .wrap{display:flex;gap:2px;overflow-x:auto;scrollbar-width:thin}
+.view-tab{border:0;background:none;padding:11px 12px 10px;cursor:pointer;color:var(--muted);font-weight:500;white-space:nowrap;border-bottom:2px solid transparent;display:flex;gap:6px;align-items:center}
+.view-tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.count{font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);border-radius:10px;padding:0 7px;color:var(--muted)}
+.view-tab[aria-selected="true"] .count{background:var(--accent-soft);color:var(--accent)}
+
+/* filters */
+.filters{padding-block:12px;display:flex;flex-direction:column;gap:10px}
+.filter-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.search{flex:1 1 260px;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:7px 11px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.dot{width:8px;height:8px;border-radius:2px;display:inline-block;flex:none}
+.sel{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sel label{font-size:11px;color:var(--muted);letter-spacing:.04em}
+.sel select{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:6px 8px;max-width:180px}
+.reset{background:none;border:0;color:var(--accent);cursor:pointer;padding:6px 4px;align-self:flex-end;font-size:13px}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;align-self:flex-end;padding:6px 2px;cursor:pointer;white-space:nowrap}
+.list-note{padding:8px 14px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted);background:var(--surface-2)}
+.status-sub{display:block;font-size:11px;font-weight:500;color:var(--muted)}
+
+/* main split */
+.main{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;padding-bottom:40px}
+@media (min-width:980px){.main{grid-template-columns:minmax(0,0.95fr) minmax(0,1.15fr);align-items:start}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;min-width:0}
+.list-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);flex-wrap:wrap}
+.list-head select{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:4px 6px;font-size:12.5px}
+.list{list-style:none;margin:0;padding:0}
+.status-bar{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.status-bar b{color:var(--ink);font-variant-numeric:tabular-nums}
+.sb-btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:2px 9px;cursor:pointer;font-size:12.5px;display:inline-flex;gap:5px;align-items:center}
+.sb-btn[aria-pressed="true"]{border-color:var(--ink);background:var(--surface-2)}
+.sb-btn .n{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+.row{display:grid;grid-template-columns:4px minmax(0,1fr) auto;gap:0 12px;padding:11px 14px 11px 0;border-bottom:1px solid var(--line);cursor:pointer;background:var(--surface)}
+.row:last-child{border-bottom:0}
+.row:hover{background:var(--surface-2)}
+.row[aria-current="true"]{background:var(--accent-soft)}
+.row.excluded .row-title{color:var(--faint);text-decoration:line-through;text-decoration-color:var(--faint)}
+.row .bar{border-radius:0 2px 2px 0}
+.row-title{font-weight:600;line-height:1.4;overflow-wrap:anywhere}
+.row-meta{color:var(--muted);font-size:12.5px;margin-top:3px;display:flex;flex-wrap:wrap;gap:2px 10px}
+.row-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.row-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;text-align:right}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;border-radius:4px;padding:1px 6px;white-space:nowrap;border:1px solid transparent}
+.t-new{background:var(--accent);color:var(--surface)}
+.t-chg{background:var(--accent-soft);color:var(--accent)}
+.t-warn{background:var(--warn-soft);color:var(--warn)}
+.t-bad{background:var(--bad-soft);color:var(--bad)}
+.t-ok{background:var(--ok-soft);color:var(--ok)}
+.t-plain{background:var(--surface-2);color:var(--muted)}
+.t-sample{background:var(--sample-soft);color:var(--sample)}
+.t-src{border-color:var(--line);color:var(--muted);font-weight:500}
+
+.status{font-size:12px;font-weight:600;white-space:nowrap}
+.s-open{color:var(--ok)} .s-soon{color:var(--bad)} .s-up{color:var(--accent)} .s-closed{color:var(--faint)} .s-unk{color:var(--warn)} .s-always{color:var(--muted)}
+.stamp{font-size:11px;font-weight:600;border:1.5px solid currentColor;border-radius:4px;padding:0 5px;letter-spacing:.02em}
+.rv-미검토{color:var(--faint)} .rv-검토완료{color:var(--ok)} .rv-제외{color:var(--bad)}
+
+/* detail */
+.detail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 44px);max-height:calc(100vh - 60px);overflow:auto}
+.detail-inner{padding:18px 20px 26px;display:flex;flex-direction:column;gap:20px}
+@media (max-width:979px){
+  .detail{position:fixed;inset:0;z-index:30;max-height:none;border-radius:0;border:0;padding-top:env(safe-area-inset-top,0px)}
+  .detail[hidden]{display:none!important}
+  .back{display:inline-flex}
+}
+.d-eyebrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.d-title{margin:6px 0 2px;font-size:20px;line-height:1.35;text-wrap:balance;overflow-wrap:anywhere}
+.d-org{color:var(--muted)}
+.review-box{border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:var(--surface-2)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface);flex-wrap:wrap}
+.seg button{border:0;background:none;padding:6px 14px;cursor:pointer;font-weight:500;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"][data-v="미검토"]{background:var(--ink);color:var(--bg)}
+.seg button[aria-pressed="true"][data-v="검토완료"]{background:var(--ok);color:var(--surface)}
+.seg button[aria-pressed="true"][data-v="제외"]{background:var(--bad);color:var(--surface)}
+.note{font-size:12.5px;color:var(--muted)}
+.alert{border-radius:8px;padding:10px 12px;font-size:13px;display:flex;flex-direction:column;gap:4px}
+.alert.warn{background:var(--warn-soft);color:var(--ink);border-left:3px solid var(--warn)}
+.alert.bad{background:var(--bad-soft);color:var(--ink);border-left:3px solid var(--bad)}
+.alert.info{background:var(--accent-soft);color:var(--ink);border-left:3px solid var(--accent)}
+.alert b{font-weight:600}
+
+h3.sec{margin:0 0 6px;font-size:12px;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.fields{width:100%;border-collapse:collapse;font-size:13.5px}
+.fields th{text-align:left;font-weight:500;color:var(--muted);width:118px;vertical-align:top;padding:7px 10px 7px 0;border-top:1px solid var(--line);font-size:12.5px}
+.fields td{vertical-align:top;padding:7px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.fields tr:first-child th,.fields tr:first-child td{border-top:0}
+.null{color:var(--faint)}
+.need{color:var(--warn);font-weight:600}
+.ev{margin-top:4px;font-size:12.5px;color:var(--muted);border-left:2px solid var(--line);padding-left:8px}
+.ev::before{content:"원문 근거 ";font-weight:600;color:var(--faint);font-size:11px;letter-spacing:.04em}
+.quote{background:var(--surface-2);border-radius:var(--r);padding:8px 10px;font-size:13px}
+.support-note{display:block;font-size:12px;color:var(--warn);margin-top:2px}
+.links{display:flex;flex-direction:column;gap:6px}
+.link-row{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:13px}
+.link-row .lk{color:var(--muted);min-width:96px;font-size:12.5px}
+.fake-link{color:var(--sample);font-size:12.5px}
+.timeline{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.timeline li{border-left:2px solid var(--line);padding-left:12px}
+.tl-head{font-size:12.5px;color:var(--muted)}
+.diff{font-size:13px;margin-top:3px}
+.diff del{color:var(--bad);text-decoration-thickness:1px}
+.diff ins{color:var(--ok);text-decoration:none;font-weight:500}
+.placeholder{padding:60px 24px;text-align:center;color:var(--muted)}
+
+/* sources view */
+.src-wrap{padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+.tbl-scroll{overflow-x:auto}
+.src-tbl{border-collapse:collapse;width:100%;min-width:860px;font-size:13px}
+.src-tbl th{text-align:left;font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.03em;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.src-tbl td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+.src-tbl td.num{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+details.guide{border:1px solid var(--line);border-radius:8px;padding:10px 14px;background:var(--surface-2)}
+details.guide summary{cursor:pointer;font-weight:600}
+details.guide pre{overflow-x:auto;font-family:var(--font-mono);font-size:12px;background:var(--surface);padding:10px;border-radius:var(--r);border:1px solid var(--line)}
+details.guide p,details.guide li{font-size:13px;color:var(--muted);max-width:72ch}
+
+/* modal */
+.modal-back{position:fixed;inset:0;background:rgba(10,14,20,.45);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:var(--surface);border-radius:10px;border:1px solid var(--line);width:min(560px,100%);max-height:90vh;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:12px}
+.modal h2{margin:0;font-size:17px}
+.exp-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+.exp-opt{text-align:left;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:10px 12px;cursor:pointer}
+.exp-opt:hover{border-color:var(--accent)}
+.exp-opt b{display:block}
+.exp-opt span{font-size:12.5px;color:var(--muted)}
+textarea.csv{width:100%;min-height:180px;font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2);padding:8px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:13px;z-index:50}
+@media (prefers-reduced-motion:no-preference){.row{transition:background .12s}}
+</style>
+</head>
+<body>
+<div class="sample-strip" id="strip">
+  <div class="wrap">
+    <strong id="stripTitle">샘플 데이터 화면</strong>
+    <span id="stripText">아래 공고·기관·금액·링크는 모두 화면 시험용 가상 데이터입니다. 실제 수집기와 예약 실행은 아직 연결되지 않았습니다.</span>
+  </div>
+</div>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1>청년 공고 관리</h1>
+      <p>공모전 · 장학금 · 생활비 · 주거비 공고 검토 <span id="batchInfo" class="mono"></span></p>
+    </div>
+    <div class="actions">
+      <a class="btn ghost" id="lnkMode" href="#sample">샘플 화면 보기</a>
+      <button class="btn" id="btnCollect" disabled title="수집 실행 주소가 연결되지 않았습니다">지금 수집 (미연결)</button>
+      <label class="btn ghost" for="fileJson">수집 결과 JSON 불러오기</label>
+      <input type="file" id="fileJson" accept="application/json,.json" hidden>
+      <button class="btn primary" id="btnExport">CSV 내보내기</button>
+    </div>
+  </div>
+</header>
+
+<nav class="views" aria-label="보기">
+  <div class="wrap" role="tablist" id="viewTabs"></div>
+</nav>
+
+<div class="wrap">
+  <section class="filters" id="filters" aria-label="필터">
+    <div class="filter-row">
+      <input class="search" id="q" type="search" placeholder="공고명·기관·지원대상 검색" aria-label="검색">
+      <div class="chips" id="catChips" role="group" aria-label="분야"></div>
+    </div>
+    <div class="filter-row">
+      <div class="sel"><label for="fSource">출처</label><select id="fSource"></select></div>
+      <div class="sel"><label for="fRegion">지역</label><select id="fRegion"></select></div>
+      <div class="sel"><label for="fStatus">신청 상태</label><select id="fStatus"></select></div>
+      <div class="sel"><label for="fKind">신청기간 유형</label><select id="fKind"></select></div>
+      <div class="sel"><label for="fDeadline">마감일</label><select id="fDeadline"></select></div>
+      <div class="sel"><label for="fReview">검토 상태</label><select id="fReview"></select></div>
+      <label class="chk" for="fClosed"><input type="checkbox" id="fClosed"> 마감·종료 포함</label>
+      <button class="reset" id="btnReset" type="button">필터 초기화</button>
+    </div>
+  </section>
+
+  <div class="main" id="main">
+    <section class="panel" id="listPanel" aria-label="공고 목록">
+      <div class="list-head">
+        <span id="listCount"></span>
+        <label>정렬 <select id="sort">
+          <option value="priority">신청 가능 우선</option>
+          <option value="deadline">마감일 빠른 순</option>
+          <option value="seen">최근 수집 순</option>
+        </select></label>
+      </div>
+      <div class="list-note" id="listNote" hidden></div>
+      <div class="status-bar" id="statusBar" aria-label="신청 상태별 건수"></div>
+      <ul class="list" id="list"></ul>
+    </section>
+    <section class="panel detail" id="detail" aria-label="공고 상세" hidden></section>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+/* =========================================================================
+   데이터 계약 (수집 프로그램 → 화면)
+   수집기는 아래와 같은 JSON 한 파일(export/latest.json)을 만든다:
+   { meta:{ mode:"sample"|"collected", schema_version, batch_id, reference_date, generated_at },
+     sources:[{ key, name, categories, connection, run:{status, collected, new, changed, error, last_success_at} }],
+     notices:[ 표준 저장 양식(필드는 FIELD_DEFS 참고, 정보 없음 = null) ] }
+   화면은 이 구조만 읽으므로, 수집기·DB가 바뀌어도 이 계약만 지키면 된다.
+   ========================================================================= */
+
+const N = null;
+const BASE = { // 모든 공통 필드를 null로 시작 (빈 문자열·0 금지)
+  id:N, category:N, title:N, organizer:N, info_type:N, sources:[],
+  target_text:N, youth_relevant:N, youth_basis:N, age_condition:N, region:N, region_condition:N,
+  income_condition:N, status_condition:N, benefit_text:N, support_type:N,
+  amount_text:N, amount_value:N, amount_unit:N, amount_period:N, amount_qualifier:N,
+  apply_start:N, apply_end:N, apply_end_time:N, period_text:N, apply_status_override:N,
+  apply_method:N, apply_url:N, required_docs:N, exclusions:N, official_url:N, attachment_url:N,
+  posted_at:N, first_seen_at:N, last_checked_at:N, last_changed_at:N,
+  changed_fields:[], needs_review_fields:[], review_status:"미검토", review_note:N,
+  extra:{}, evidence:{}, history:[], related:[], conflicts:[], flags:{}
+};
+const mk = o => Object.assign(JSON.parse(JSON.stringify(BASE)), o);
+const EMPTY = { meta:{ mode:"empty", schema_version:"0.1", batch_id:null, reference_date:new Date(Date.now()+9*3600000).toISOString().slice(0,10), generated_at:null }, sources:[], notices:[] };
+const SAMPLE_URL = "sample/sample-data.json";   // 샘플: #sample 로 열 때만 읽음
+const LATEST_URL = "data/latest.json";          // 실제 수집 결과: 수집기가 매일 갱신
+
+/* ------------------------- 필드 정의 ------------------------- */
+const LABELS = {
+  category:"분야", title:"공고명", organizer:"주최·운영기관", info_type:"정보 유형", target_text:"지원대상 원문",
+  youth_relevant:"대학생·청년 관련", youth_basis:"분류 근거", age_condition:"연령 조건", region:"지역", region_condition:"거주지역 조건",
+  income_condition:"소득·재산 조건", status_condition:"재학·취업 상태", benefit_text:"혜택 원문", support_type:"지원방식",
+  amount_text:"지원금액", apply_start:"신청 시작일", apply_end:"신청 마감일", apply_end_time:"마감 시각", period_text:"신청기간 원문",
+  apply_method:"신청방법", required_docs:"필요서류", exclusions:"제외조건·중복수혜", posted_at:"게시일", review_status:"검토 상태",
+  loan_terms:"금리·한도·상환", "원본 변경 확인":"원본 변경 확인", "중복 여부":"중복 여부", "공식 안내 링크 확인 필요":"공식 안내 링크 확인 필요"
+};
+const EXTRA_DEFS = {
+  "공모전":[["contest_field","공모 분야"],["theme","주제"],["team_type","개인·팀 참가"],["submission","제출물"],["prize_text","상금·시상 내역"]],
+  "장학금":[["sch_kind","등록금/생활비/기타"],["pay_amount","지급액"],["pay_freq","지급 횟수·기간"],["grade_cond","성적 조건"],["year_cond","학년 조건"],["income_cond","소득 조건"],["dup_allowed","중복수혜 가능 여부"]],
+  "생활비":[["amount_period_text","지원금액·기간"],["budget_end","예산 소진 시 종료"],["household","가구 기준"],["housing","주거 관련 조건"],["self_pay","본인 부담금"],["loan_terms","대출 금리·한도·상환"]],
+};
+EXTRA_DEFS["주거비"] = EXTRA_DEFS["생활비"];
+const CATS = ["공모전","장학금","생활비","주거비"];
+const CAT_COLOR = {"공모전":"var(--c-contest)","장학금":"var(--c-scholar)","생활비":"var(--c-living)","주거비":"var(--c-housing)"};
+const ST_ELAPSED = "표기된 일정 경과(월 단위)", ST_CLOSED_TEXT = "종료 명시(원문)", ST_NO_APPLY = "신청 절차 없음(원문)";
+const STATUSES = ["접수중","신청예정","상시",ST_NO_APPLY,"기간 확인 필요",ST_ELAPSED,ST_CLOSED_TEXT,"마감"];
+// 기본 목록에서 숨기는 상태(기록은 그대로 보관). '마감·종료 포함'을 켜거나 이 상태를 직접 고르면 보인다
+const CLOSED_STATES = new Set(["마감", ST_CLOSED_TEXT, ST_ELAPSED]);
+const closedExplicit = () => CLOSED_STATES.has(state.status) || state.deadline === "past";
+const hideClosed = () => !state.showClosed && !closedExplicit();
+/* 신청기간 유형(원문 기준 사유). 사유가 분류돼도 실제 신청기간 확인은 별개 */
+const PERIOD_KINDS = ["기간 명시","상시","신청 절차 없음","원문에 종료 명시","종료 표현(작성 연도 미확인)","사유 발생 후 기한",
+  "기관·유형별 일정 상이","연도 있는 월 단위","별도 공고 확인","매년·정기 반복","예산 소진 등 조건부","신청기간 여러 개","원문 날짜 오류","원문 기간 미기재","분류 안 됨"];
+/* 오늘 검토 후보에서 빼는 중요한 충돌(대상·혜택·기간) */
+const BLOCKING = ["apply_start","apply_end","age_condition","amount_text","target_text","benefit_text","중복 여부","원본 변경 확인","공식 안내 링크 확인 필요"];
+const REVIEWS = ["미검토","검토완료","제외"];
+
+/* ------------------------- 상태 ------------------------- */
+let DATA = EMPTY;
+let TODAY = DATA.meta.reference_date;
+const LS_KEY = "youth-notice-review-v1";
+let reviewOverrides = {};
+try { reviewOverrides = JSON.parse(localStorage.getItem(LS_KEY) || "{}") || {}; } catch(e) { reviewOverrides = {}; }
+function scopeKey(){ return DATA.meta.mode === "collected" ? "collected" : (DATA.meta.mode||"unknown") + ":" + (DATA.meta.batch_id||""); }
+function saveOverrides(){ try { localStorage.setItem(LS_KEY, JSON.stringify(reviewOverrides)); } catch(e){} }
+function reviewOf(n){
+  const o = (reviewOverrides[scopeKey()]||{})[n.id];
+  const reset = n.flags && n.flags.review_reset_at;
+  if (o && reset && o.at < reset) return "미검토";   // 검토 뒤 내용이 바뀐 공고는 다시 검토
+  return o ? o.status : (n.review_status || "미검토");
+}
+
+const state = { view:"candidates", q:"", cats:new Set(), source:"", region:"", status:"", kind:"", deadline:"", review:"", sort:"priority", selected:null, mobileOpen:false, showClosed:false };
+
+/* ------------------------- 날짜·상태 계산 ------------------------- */
+const dayMs = 86400000;
+const toDay = s => s ? new Date(s.slice(0,10)+"T00:00:00Z").getTime() : null;
+const dateOf = iso => iso ? iso.slice(0,10) : null;
+function daysLeft(n){ return n.apply_end ? Math.round((toDay(n.apply_end)-toDay(TODAY))/dayMs) : null; }
+/* 수집기 collector/rules.py 의 apply_status 와 같은 규칙 */
+function applyStatus(n){
+  if (n.apply_status_override) return n.apply_status_override;
+  const t = toDay(TODAY), s = toDay(n.apply_start), e = toDay(n.apply_end);
+  if (s || e){
+    if (s && t < s) return "신청예정";
+    if (e && t > e) return "마감";
+    return "접수중";
+  }
+  const k = n.period_kind;
+  if (k === "상시" || (k == null && n.info_type === "상시 제도 안내")) return "상시";
+  if (k === "신청 절차 없음") return ST_NO_APPLY;
+  if (k === "원문에 종료 명시" && n.period_closed_year && n.period_closed_year >= +TODAY.slice(0,4)) return ST_CLOSED_TEXT;
+  if (k === "연도 있는 월 단위" && n.period_month_end && n.period_month_end < TODAY.slice(0,7)) return ST_ELAPSED;
+  return "기간 확인 필요";
+}
+const isPeriodic = n => !!(n.flags && n.flags.source_cadence);   // 월간 파일 등 정기 자료 — '오늘 신규 공고'로 세지 않음
+const isNew = n => !isPeriodic(n) && dateOf(n.first_seen_at) === TODAY;
+const isChanged = n => !isPeriodic(n) && !isNew(n) && dateOf(n.last_changed_at) === TODAY;   // 공고 원문 변경만(분류 규칙 변경 제외)
+const isSoon = n => applyStatus(n) === "접수중" && daysLeft(n) !== null && daysLeft(n) <= 7;
+const hasRequired = n => (n.needs_review_fields||[]).length > 0 || (n.conflicts||[]).length > 0;
+const needsCheck = n => hasRequired(n) || applyStatus(n) === "기간 확인 필요";
+const sourceNames = n => (n.sources||[]).map(s => s.site);
+/* 오늘 검토할 후보: 청년 관련 확인 + 신청기간이 명확한 접수중·신청예정 + 중요한 충돌 없음 + 제외 아님 */
+function isCandidate(n){
+  if (reviewOf(n) === "제외" || n.youth_relevant !== true) return false;
+  const st = applyStatus(n);
+  if ((st !== "접수중" && st !== "신청예정") || !n.apply_end) return false;
+  if ((n.conflicts||[]).some(c => BLOCKING.includes(c.field))) return false;
+  return !(n.needs_review_fields||[]).some(f => BLOCKING.includes(f));
+}
+
+const VIEWS = [
+  ["candidates","오늘 검토 후보", isCandidate],
+  ["all","전체", () => true],
+  ["new","오늘 신규", isNew],
+  ["changed","오늘 변경", isChanged],
+  ["soon","마감 임박 (7일)", isSoon],
+  ["upcoming","신청예정", n => applyStatus(n) === "신청예정"],
+  ["check","확인 필요", needsCheck],
+  ["sources","출처별 수집 상태", null]
+];
+
+/* ------------------------- 유틸 ------------------------- */
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const $ = id => document.getElementById(id);
+function fmtDate(d){ if(!d) return null; const [y,m,dd] = d.slice(0,10).split("-"); const w = "일월화수목금토"[new Date(d.slice(0,10)+"T00:00:00Z").getUTCDay()]; return `${y}.${m}.${dd}(${w})`; }
+function fmtTime(iso){ if(!iso) return null; return iso.slice(0,10).replace(/-/g,".") + " " + iso.slice(11,16); }
+function nullCell(n, key){
+  const need = (n.needs_review_fields||[]).includes(key);
+  return need ? `<span class="need">확인 필요</span>` : `<span class="null">미기재</span>`;
+}
+function val(n, key, v){ return (v === null || v === undefined || v === "") ? nullCell(n,key) : esc(v); }
+function linkHTML(url, label){
+  if (!url) return `<span class="null">미기재</span>`;
+  if (url.startsWith("sample://")) return `<span class="fake-link">샘플 주소 — 실제 링크 없음</span> <span class="mono null">${esc(url)}</span>`;
+  return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label || url)}</a>`;
+}
+function aidLabel(a){
+  return ({"학자금대출":"학자금대출 · 상환 의무 있음","이자지원":"대출 이자지원","신용회복·채무조정":"신용회복·채무조정",
+           "대출 상환지원":"기존 대출 상환지원(새 대출 아님)"})[a] || a;
+}
+function typedLinks(n){
+  // 출처가 준 링크 종류를 그대로 구분해 표시(다른 출처 링크로 대체하지 않음)
+  const fl = n.flags||{};
+  if (fl.links || fl.link_texts || fl.link_missing){
+    let h = (fl.links||[]).filter(x=>/^https?:\/\//.test(x.url)).map(x=>`<div class="link-row"><span class="lk">${esc(x.type)}</span>${linkHTML(x.url)}<span class="note">출처 제공 값 (${esc(x.field)})</span></div>`).join("");
+    h += (fl.link_texts||[]).map(x=>`<div class="link-row"><span class="lk">${esc(x.type)}</span><span class="mono">${esc(x.text)}</span><span class="note">주소 형식이 아니어서 링크로 만들지 않음</span></div>`).join("");
+    if (fl.link_missing) h += `<div class="link-row"><span class="lk">공식 안내 링크</span><span class="tag t-warn">공식 안내 링크 확인 필요</span><span class="note">출처 응답에 상세·기관·신청 링크가 없음. 상세 주소를 추측해 만들지 않음</span></div>`;
+    return h;
+  }
+  return `<div class="link-row"><span class="lk">주최기관 공식</span>${linkHTML(n.official_url)}</div>
+      <div class="link-row"><span class="lk">신청 링크</span>${linkHTML(n.apply_url)}</div>`;
+}
+function statusHTML(n){
+  const st = applyStatus(n), d = daysLeft(n);
+  if (st === "접수중"){
+    const cls = d !== null && d <= 7 ? "s-soon" : "s-open";
+    return `<span class="status ${cls}">접수중${d!==null ? ` · ${d===0?"오늘 마감":"D-"+d}` : " · 마감일 미기재"}</span>`;
+  }
+  const map = {"신청예정":"s-up","마감":"s-closed","기간 확인 필요":"s-unk","상시":"s-always",[ST_NO_APPLY]:"s-always",[ST_ELAPSED]:"s-closed",[ST_CLOSED_TEXT]:"s-closed"};
+  let extra = "";
+  if (st === "신청예정" && n.apply_start){ const k = Math.round((toDay(n.apply_start)-toDay(TODAY))/dayMs); extra = ` · ${k}일 후 시작`; }
+  if (st === "기간 확인 필요" && n.period_kind) extra = ` · ${n.period_kind}`;
+  const sub = st === "기간 확인 필요" ? "신청 가능 여부 미확정 — 원문 확인"
+            : st === "상시" ? "원문 표기 · 현재 접수 여부는 원문 확인" : "";
+  return `<span class="status ${map[st]||""}">${esc(st)}${esc(extra)}${sub?`<span class="status-sub">${sub}</span>`:""}</span>`;
+}
+function toast(msg){ const t = document.createElement("div"); t.className="toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 2400); }
+
+/* ------------------------- 필터 ------------------------- */
+function baseFiltered(){
+  const q = state.q.trim().toLowerCase();
+  return DATA.notices.filter(n => {
+    if (state.cats.size && !state.cats.has(n.category)) return false;
+    if (state.source && !sourceNames(n).includes(state.source)) return false;
+    if (state.region && n.region !== state.region && !(state.region==="__none" && !n.region)) return false;
+    if (state.status && applyStatus(n) !== state.status) return false;
+    if (hideClosed() && CLOSED_STATES.has(applyStatus(n))) return false;
+    if (state.kind && (n.period_kind || "") !== state.kind) return false;
+    if (state.review && reviewOf(n) !== state.review) return false;
+    if (state.deadline){
+      const d = daysLeft(n), st = applyStatus(n);
+      if (state.deadline === "7" && !(d !== null && d >= 0 && d <= 7 && st !== "마감")) return false;
+      if (state.deadline === "30" && !(d !== null && d >= 0 && d <= 30 && st !== "마감")) return false;
+      if (state.deadline === "past" && !(d !== null && d < 0)) return false;
+      if (state.deadline === "none" && n.apply_end) return false;
+    }
+    if (q){
+      const hay = [n.title,n.organizer,n.target_text,n.region,n.benefit_text,...sourceNames(n)].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+const PRI = {"접수중":0,"신청예정":1,"기간 확인 필요":2,"상시":3,[ST_NO_APPLY]:3,[ST_ELAPSED]:4,[ST_CLOSED_TEXT]:4,"마감":4};
+function sorted(list){
+  const arr = list.slice();
+  if (state.view === "candidates" && state.sort === "priority"){
+    // 후보: 오늘 신규·공고 변경 먼저, 그다음 마감이 빠른 순
+    const fresh = n => (isNew(n) || isChanged(n)) ? 0 : 1;
+    const dk = n => n.apply_end ? toDay(n.apply_end) : Infinity;
+    return arr.sort((a,b) => fresh(a)-fresh(b) || dk(a)-dk(b));
+  }
+  if (state.sort === "seen") return arr.sort((a,b) => (b.first_seen_at||"").localeCompare(a.first_seen_at||""));
+  const dk = n => n.apply_end ? toDay(n.apply_end) : (n.apply_start ? toDay(n.apply_start) : Infinity);
+  if (state.sort === "deadline") return arr.sort((a,b) => dk(a)-dk(b));
+  return arr.sort((a,b) => {
+    const ra = reviewOf(a)==="제외", rb = reviewOf(b)==="제외";
+    if (ra !== rb) return ra ? 1 : -1;
+    const pa = PRI[applyStatus(a)] ?? 5, pb = PRI[applyStatus(b)] ?? 5;
+    if (pa !== pb) return pa-pb;
+    if (pa === 4) return dk(b)-dk(a);
+    return dk(a)-dk(b);
+  });
+}
+
+/* ------------------------- 렌더: 탭·필터 ------------------------- */
+function renderTabs(){
+  const base = baseFiltered();
+  $("viewTabs").innerHTML = VIEWS.map(([k,label,fn]) => {
+    const c = fn ? base.filter(fn).length : DATA.sources.length;
+    return `<button class="view-tab" role="tab" aria-selected="${state.view===k}" data-view="${k}">${label}<span class="count">${c}</span></button>`;
+  }).join("");
+}
+function fillSelect(id, opts, cur){
+  $(id).innerHTML = opts.map(([v,l]) => `<option value="${esc(v)}"${v===cur?" selected":""}>${esc(l)}</option>`).join("");
+}
+function renderFilters(){
+  $("catChips").innerHTML = CATS.map(c => `<button class="chip" type="button" aria-pressed="${state.cats.has(c)}" data-cat="${c}"><span class="dot" style="background:${CAT_COLOR[c]}"></span>${c}</button>`).join("");
+  const srcs = [...new Set(DATA.notices.flatMap(sourceNames))];
+  const order = DATA.sources.map(s=>s.name);
+  srcs.sort((a,b) => (order.indexOf(a)+1||99) - (order.indexOf(b)+1||99));
+  fillSelect("fSource", [["","전체"], ...srcs.map(s=>[s,s])], state.source);
+  const regions = [...new Set(DATA.notices.map(n=>n.region).filter(Boolean))].sort((a,b)=> a==="전국"?-1:b==="전국"?1:a.localeCompare(b,"ko"));
+  fillSelect("fRegion", [["","전체"], ...regions.map(r=>[r,r]), ["__none","지역 미기재"]], state.region);
+  fillSelect("fStatus", [["","전체"], ...STATUSES.map(s=>[s,s])], state.status);
+  const kinds = PERIOD_KINDS.filter(k => DATA.notices.some(n => n.period_kind === k));
+  fillSelect("fKind", [["","전체"], ...kinds.map(k=>[k,k])], state.kind);
+  fillSelect("fDeadline", [["","전체"],["7","7일 이내 마감"],["30","30일 이내 마감"],["past","마감일 지남"],["none","마감일 미기재"]], state.deadline);
+  fillSelect("fReview", [["","전체"], ...REVIEWS.map(s=>[s,s])], state.review);
+}
+
+/* ------------------------- 렌더: 목록 ------------------------- */
+function currentList(){
+  const v = VIEWS.find(x=>x[0]===state.view);
+  return sorted(baseFiltered().filter(v && v[2] ? v[2] : () => true));
+}
+function rowHTML(n){
+  const rv = reviewOf(n);
+  const tags = [];
+  if (DATA.meta.mode === "sample") tags.push(`<span class="tag t-sample">샘플</span>`);
+  if (isNew(n)) tags.push(`<span class="tag t-new">오늘 신규</span>`);
+  if (isChanged(n)) tags.push(`<span class="tag t-chg">오늘 변경</span>`);
+  if ((n.conflicts||[]).length) tags.push(`<span class="tag t-bad">원문 충돌</span>`);
+  if ((n.needs_review_fields||[]).includes("중복 여부")) tags.push(`<span class="tag t-warn">중복 확인</span>`);
+  if ((n.related||[]).some(r=>r.type==="같은 정책 후보(다른 출처)")) tags.push(`<span class="tag">다른 출처 같은 정책 후보</span>`);
+  else if (needsCheck(n)) tags.push(`<span class="tag t-warn">확인 필요</span>`);
+  else if ((n.review_notes||[]).length) tags.push(`<span class="tag t-plain">참고사항</span>`);
+  if (n.flags && n.flags.rule_changed_at && dateOf(n.flags.rule_changed_at) === TODAY) tags.push(`<span class="tag t-plain">분류 규칙 변경</span>`);
+  if (n.flags && n.flags.meta_changed_at && dateOf(n.flags.meta_changed_at) === TODAY) tags.push(`<span class="tag t-plain">원본 메타데이터 변경</span>`);
+  if (n.flags && n.flags.source_diff_unverified && (n.needs_review_fields||[]).includes("원본 변경 확인")) tags.push(`<span class="tag t-warn">원본 변경 확인 필요</span>`);
+  if (isPeriodic(n)) tags.push(`<span class="tag t-plain">${esc(n.flags.source_cadence)}${n.flags.source_version?" · 기준일 "+esc(n.flags.source_version):""}</span>`);
+  const aid = (n.flags||{}).aid_kind;
+  if (aid && aid !== "장학금") tags.push(`<span class="tag t-warn">${esc(aidLabel(aid))}</span>`);
+  else if (n.support_type === "대출") tags.push(`<span class="tag t-plain">대출</span>`);
+  else if (n.support_type === "이자지원") tags.push(`<span class="tag t-plain">이자지원</span>`);
+  if (n.info_type === "상시 제도 안내") tags.push(`<span class="tag t-plain">상시 제도</span>`);
+  sourceNames(n).forEach(s => tags.push(`<span class="tag t-src">${esc(s)}</span>`));
+  return `<li class="row${rv==="제외"?" excluded":""}" role="button" tabindex="0" data-id="${esc(n.id)}" aria-current="${state.selected===n.id}">
+    <span class="bar" style="background:${CAT_COLOR[n.category]||"var(--line)"}"></span>
+    <div style="min-width:0">
+      <div class="row-title">${esc(n.title||"(공고명 미기재)")}</div>
+      <div class="row-meta"><span>${esc(n.category||"분야 미기재")}</span><span>${esc(n.organizer||"기관 미기재")}</span><span>${esc(n.region||"지역 미기재")}</span>${n.amount_text?`<span>${esc(n.amount_text)}</span>`:""}</div>
+      <div class="row-tags">${tags.join("")}</div>
+    </div>
+    <div class="row-side">
+      ${statusHTML(n)}
+      <span class="mono null">${n.apply_end ? "~ "+esc(n.apply_end.slice(5).replace("-",".")) : ""}</span>
+      <span class="stamp rv-${rv}">${rv}</span>
+    </div>
+  </li>`;
+}
+function renderList(){
+  if (state.view === "sources"){ renderSources(); return; }
+  $("main").style.display = "";
+  $("listPanel").hidden = false;
+  const list = currentList();
+  const hiddenClosed = hideClosed() ? (() => { const sv = state.showClosed; state.showClosed = true;
+    const v = VIEWS.find(x=>x[0]===state.view); const all = baseFiltered().filter(v && v[2] ? v[2] : () => true).length;
+    state.showClosed = sv; return all - list.length; })() : 0;
+  $("listCount").textContent = `표시 ${list.length}건(현재 필터 적용) · 전체 누적 보관 ${DATA.notices.length}건`
+    + (hiddenClosed ? ` · 마감·종료 ${hiddenClosed}건 숨김` : "") + ` · 기준일 ${fmtDate(TODAY)}`;
+  const notes = [];
+  if (state.view === "new") notes.push("‘오늘 신규’는 이 수집에 처음 들어온 공고(최초 발견)입니다. 모집이 새로 시작됐다는 뜻이 아니니 게시일과 신청기간 원문을 함께 보세요.");
+  if (hiddenClosed) notes.push(`마감·원문 종료 명시·표기 일정 경과 공고 ${hiddenClosed}건은 기본 목록에서 숨겼습니다(기록은 보관). ‘마감·종료 포함’을 켜면 함께 봅니다.`);
+  else if (!state.showClosed && closedExplicit()) notes.push("마감·종료 상태를 직접 선택해 해당 공고를 표시합니다.");
+  $("listNote").innerHTML = notes.map(esc).join("<br>"); $("listNote").hidden = !notes.length;
+  // 누적 건수(마감 포함)와 신청 상태별 건수를 따로 보여 줌. 누르면 신청 상태 필터가 걸림
+  const cnt = {}; STATUSES.forEach(s => cnt[s] = 0);
+  DATA.notices.forEach(n => { const s = applyStatus(n); cnt[s] = (cnt[s]||0) + 1; });
+  $("statusBar").innerHTML = `<span>누적 <b>${DATA.notices.length}</b>건 중</span>` +
+    STATUSES.map(s => `<button type="button" class="sb-btn" data-st="${esc(s)}" aria-pressed="${state.status===s}">${esc(s)} <span class="n">${cnt[s]||0}</span></button>`).join("");
+  $("list").innerHTML = list.length ? list.map(rowHTML).join("") : `<li class="empty">조건에 맞는 공고가 없습니다. 필터를 조정해 보세요.</li>`;
+  if (state.selected && !DATA.notices.find(n=>n.id===state.selected)) state.selected = null;
+  renderDetail();
+}
+
+/* ------------------------- 렌더: 상세 ------------------------- */
+function fieldRow(n, key, label, display){
+  const raw = n[key];
+  const shown = display !== undefined ? display : val(n, key, raw);
+  const ev = n.evidence && n.evidence[key] ? `<div class="ev">${esc(n.evidence[key])}</div>` : "";
+  const chg = (n.changed_fields||[]).includes(key) && isChanged(n) ? ` <span class="tag t-chg">오늘 변경</span>` : "";
+  return `<tr><th scope="row">${esc(label || LABELS[key] || key)}</th><td>${shown}${chg}${ev}</td></tr>`;
+}
+function supportDisplay(n){
+  if (!n.support_type) return nullCell(n,"support_type");
+  const notes = { "대출":"상환 의무가 있는 대출입니다. 무상 지원금이 아닙니다.", "이자지원":"대출 이자 일부를 지원합니다. 원금은 본인이 상환합니다." };
+  return esc(n.support_type) + (notes[n.support_type] ? `<span class="support-note">${notes[n.support_type]}</span>` : "");
+}
+function amountDisplay(n){
+  if (!n.amount_text) return nullCell(n,"amount_text");
+  const items = n.amount_items || [];
+  if (items.length > 1){
+    return `<div class="note">원문 금액 ${items.length}개를 항목별로 정리했습니다(대표 금액으로 합치지 않음).</div>` +
+      items.map(i => `<div>${i.label?`<span class="note">${esc(i.label)}</span> `:""}<b>${esc(i.text)}</b>${[i.qualifier,i.period&&i.period+" 단위"].filter(Boolean).length?` <span class="note mono">(${esc([i.qualifier,i.period&&i.period+" 단위"].filter(Boolean).join(" · "))})</span>`:""}</div>`).join("");
+  }
+  const parts = [];
+  if (n.amount_qualifier) parts.push(n.amount_qualifier);
+  if (n.amount_period) parts.push(n.amount_period + " 단위");
+  if (n.amount_value !== null) parts.push(n.amount_value.toLocaleString("ko-KR") + (n.amount_unit||""));
+  return `<b>${esc(n.amount_text)}</b>${parts.length?`<div class="note mono">구조화: ${esc(parts.join(" · "))}</div>`:""}`;
+}
+function renderDetail(){
+  const el = $("detail");
+  const n = DATA.notices.find(x => x.id === state.selected);
+  if (window.matchMedia("(max-width:979px)").matches) el.hidden = !(n && state.mobileOpen);
+  else el.hidden = false;
+  if (!n){ el.innerHTML = `<div class="placeholder">왼쪽 목록에서 공고를 선택하면 정리된 정보, 원문 근거, 출처 링크, 변경 내역이 여기에 표시됩니다.</div>`; return; }
+  const rv = reviewOf(n);
+  const ovr = (reviewOverrides[scopeKey()]||{})[n.id];
+  const alerts = [];
+  if (DATA.meta.mode === "sample") alerts.push(`<div class="alert info"><b>샘플 공고</b>가상의 기관·금액·날짜입니다. 콘텐츠 제작에 사용하지 마세요.</div>`);
+  (n.conflicts||[]).forEach(c => alerts.push(`<div class="alert bad"><b>필수 확인 · 원문 간 충돌 — ${esc(LABELS[c.field]||c.field)}</b>${c.values.map(v=>`${esc(v.site)}: ${esc(v.value)}`).join(" / ")}<span class="note">주최기관 공식 공고로 확인할 때까지 어느 값도 확정하지 않습니다.</span></div>`));
+  const nr = (n.needs_review_fields||[]).filter(f => !(n.conflicts||[]).some(c=>c.field===f));
+  const nrOther = nr.filter(f => f !== "apply_start" && f !== "apply_end");
+  if (nrOther.length) alerts.push(`<div class="alert warn"><b>필수 확인 항목</b>${nrOther.map(f=>esc(LABELS[f]||f)).join(", ")}</div>`);
+  const stD = applyStatus(n);
+  if (stD === "기간 확인 필요") alerts.push(`<div class="alert warn"><b>신청기간 확인 필요${n.period_kind?` — 유형: ${esc(n.period_kind)}`:""}</b>원문에 이번 신청기간이 확정돼 있지 않아 날짜를 만들지 않았습니다. 사유가 분류돼도 실제 기간은 원문에서 확인해야 합니다.</div>`);
+  if (stD === ST_ELAPSED) alerts.push(`<div class="alert warn"><b>${ST_ELAPSED}</b>원문에 적힌 연도·끝 달(${esc(n.period_month_end)})이 기준일보다 지났습니다. 실제 모집 종료가 확정된 것은 아니며, 일자는 원문에 없습니다.</div>`);
+  if (stD === ST_CLOSED_TEXT) alerts.push(`<div class="alert info"><b>${ST_CLOSED_TEXT}</b>원문에 ${esc(n.period_closed_year)}년 모집 종료(또는 미모집)가 명시돼 있습니다.</div>`);
+  if (stD === "상시") alerts.push(`<div class="alert info"><b>상시 표기</b>원문이 ‘상시’로 적혀 있을 뿐, 지금 실제로 접수 가능한지는 원문에서 확인해야 합니다.</div>`);
+  if ((n.period_flags||[]).length) alerts.push(`<div class="alert info"><b>신청기간 참고</b>${(n.period_flags||[]).map(esc).join(" · ")}</div>`);
+  if ((n.review_notes||[]).length) alerts.push(`<div class="alert info"><b>참고사항(필수 확인 아님)</b>${n.review_notes.map(x=>`${esc(LABELS[x.field]||x.field)}: ${esc(x.note)}`).join("<br>")}</div>`);
+  if (n.flags && n.flags.source_diff_unverified) alerts.push(`<div class="alert warn"><b>추가 검토 · 원본 변경 확인</b>${esc(n.flags.source_diff_unverified.note)}. 공고 원문(출처 링크)에서 현재 내용을 직접 확인해 주세요. 공고가 실제로 바뀐 시각은 알 수 없어 기록하지 않았습니다.</div>`);
+  if (n.flags && n.flags.merged) alerts.push(`<div class="alert info"><b>여러 출처 연결됨</b>${esc(n.flags.merged)}</div>`);
+
+  const extras = (EXTRA_DEFS[n.category]||[]).map(([k,l]) => {
+    const v = n.extra ? n.extra[k] : null;
+    const ev = n.evidence && n.evidence["extra_"+k] ? `<div class="ev">${esc(n.evidence["extra_"+k])}</div>` : "";
+    const chg = (n.changed_fields||[]).includes(k) && isChanged(n) ? ` <span class="tag t-chg">오늘 변경</span>` : "";
+    return `<tr><th scope="row">${esc(l)}</th><td>${v===null||v===undefined?`<span class="null">미기재</span>`:esc(v)}${chg}${ev}</td></tr>`;
+  }).join("");
+
+  const srcLinks = (n.sources||[]).map(s => `<div class="link-row"><span class="lk">${esc(s.site)}${s.source_id?` <span class="mono">#${esc(s.source_id)}</span>`:""}</span>${linkHTML(s.url)}${s.site_category?` <span class="note">사이트 분류: ${esc(s.site_category)}</span>`:""}${s.note?`<span class="note">${esc(s.note)}</span>`:""}</div>`).join("");
+
+  const related = (n.related||[]).map(r => {
+    const target = r.id ? DATA.notices.find(x=>x.id===r.id) : null;
+    const link = target ? `<button class="btn ghost" data-goto="${esc(r.id)}" style="padding:2px 8px">${esc(target.title)}</button>` : (r.url ? `${esc(r.title||"")} ${linkHTML(r.url)}` : "");
+    return `<div class="link-row"><span class="lk">${esc(r.type)}</span>${link}${r.note?`<span class="note">${esc(r.note)}</span>`:""}</div>`;
+  }).join("");
+
+  const NOTE_EXPLAIN = {
+    "분류 규칙 변경":"공고 원문 변경이 아닙니다 — 정리 규칙만 바뀌었습니다",
+    "원문 보완(데이터 이전)":"공고 원문 변경이 아닙니다 — 원본 응답 전체를 DB에 처음 보관했습니다",
+    "원문 보완(데이터 이전) · 분류 규칙 변경":"공고 원문 변경이 아닙니다 — 원본 첫 보관과 정리 규칙 변경",
+    "원본 메타데이터 변경":"수정일시 등 비핵심 정보만 바뀌었습니다. 검토 상태는 유지됩니다",
+    "중요 원문 변경":"지원대상·선정기준·지원내용·신청기간 등 핵심 원문이 바뀌어 미검토로 되돌렸습니다(시각은 감지 시각)",
+    "원본 변경 — 변경 항목 확인 불가":"이전 원본이 없어 무엇이 바뀌었는지 알 수 없습니다. 원문을 직접 확인해 주세요",
+    "이전 요약값과 차이 있음 — 이전 원문 미보관으로 변경 항목 확인 불가":"기록 시각은 점검 시각이며 실제 변경 시각이 아닙니다. 원문을 직접 확인해 주세요"};
+  const cut = v => { const t = v == null ? "없음" : String(v); return t.length > 300 ? t.slice(0,300) + ` …(${t.length}자 중 300자 표시)` : t; };
+  const hist = (n.history||[]).map(h => `<li><div class="tl-head mono">${esc(fmtTime(h.at)||"")} · ${esc(h.batch||"")}</div><div>${NOTE_EXPLAIN[h.note]?`<span class="tag ${/중요|확인 불가/.test(h.note)?"t-warn":"t-plain"}">${esc(h.note)}</span> ${esc(NOTE_EXPLAIN[h.note])}`:esc(h.note||"")}</div>${(h.changes||[]).map(c=>`<div class="diff"><b>${esc(LABELS[c.field]||c.field)}</b>: <del>${esc(cut(c.before))}</del> → <ins>${esc(cut(c.after))}</ins></div>`).join("")}</li>`).join("");
+
+  el.innerHTML = `<div class="detail-inner">
+    <div>
+      <button class="btn ghost back" id="btnBack" type="button">← 목록</button>
+      <div class="d-eyebrow" style="margin-top:6px">
+        <span class="tag" style="background:${CAT_COLOR[n.category]};color:var(--surface)">${esc(n.category||"")}</span>${(n.flags||{}).aid_kind && n.flags.aid_kind!=="장학금" ? ` <span class="tag t-warn">${esc(aidLabel(n.flags.aid_kind))}</span>` : ""}
+        <span class="tag t-plain">${esc(n.info_type||"정보 유형 미기재")}</span>
+        ${isNew(n)?`<span class="tag t-new">오늘 신규</span>`:""}${isChanged(n)?`<span class="tag t-chg">오늘 변경</span>`:""}
+        ${statusHTML(n)}
+        <span class="mono null">${esc(n.id)}</span>
+      </div>
+      <h2 class="d-title">${esc(n.title||"(공고명 미기재)")}</h2>
+      <div class="d-org">${val(n,"organizer",n.organizer)}</div>
+    </div>
+
+    <div class="review-box">
+      <div style="display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between">
+        <span style="font-weight:600">검토 상태</span>
+        <div class="seg" role="group" aria-label="검토 상태">${REVIEWS.map(r=>`<button type="button" data-v="${r}" aria-pressed="${rv===r}">${r}</button>`).join("")}</div>
+      </div>
+      ${n.review_note?`<div class="note">${esc(n.review_note)}</div>`:""}
+      <div class="note">${ovr?`이 브라우저에서 ${esc(fmtTime(ovr.at))}에 변경. `:""}검토 상태는 현재 이 브라우저에만 저장됩니다. 수집기 DB 연결 후에는 DB에 기록됩니다.</div>
+    </div>
+
+    ${alerts.join("")}
+
+    <div><h3 class="sec">지원대상·자격</h3><table class="fields"><tbody>
+      <tr><th scope="row">지원대상 원문</th><td>${n.target_text?`<div class="quote">${esc(n.target_text)}</div>`:nullCell(n,"target_text")}${((n.flags||{}).clipped_fields||[]).length?`<div class="note">화면용으로 줄인 항목이 있습니다(${esc(n.flags.clipped_fields.map(f=>LABELS[f]||f).join(", "))}). 금액·자격 판정은 원문 전체로 했고, 원문 전체는 수집 DB에 보관됩니다.</div>`:""}</td></tr>
+      ${fieldRow(n,"youth_relevant","대학생·청년 관련", n.youth_relevant===null?nullCell(n,"youth_relevant"):(n.youth_relevant?"관련 있음":"관련 없음") + (n.youth_basis?`<div class="note">근거: ${esc(n.youth_basis)}</div>`:""))}
+      ${fieldRow(n,"age_condition")}
+      ${fieldRow(n,"region_condition")}
+      ${fieldRow(n,"income_condition")}
+      ${fieldRow(n,"status_condition")}
+    </tbody></table></div>
+
+    <div><h3 class="sec">혜택</h3><table class="fields"><tbody>
+      ${fieldRow(n,"benefit_text")}
+      ${fieldRow(n,"support_type",null,supportDisplay(n))}
+      ${fieldRow(n,"amount_text",null,amountDisplay(n))}
+    </tbody></table></div>
+
+    <div><h3 class="sec">신청</h3><table class="fields"><tbody>
+      ${fieldRow(n,"period_text")}
+      <tr><th scope="row">신청기간 유형</th><td>${n.period_kind?esc(n.period_kind):`<span class="null">미분류</span>`}</td></tr>
+      ${fieldRow(n,"apply_start",null,n.apply_start?esc(fmtDate(n.apply_start)):nullCell(n,"apply_start"))}
+      ${fieldRow(n,"apply_end",null,n.apply_end?esc(fmtDate(n.apply_end)):nullCell(n,"apply_end"))}
+      ${fieldRow(n,"apply_end_time")}
+      ${fieldRow(n,"posted_at",null,n.posted_at?esc(fmtDate(n.posted_at))+`<div class="note">게시일은 신청 시작일과 별개로 관리합니다.</div>`:nullCell(n,"posted_at"))}
+      ${fieldRow(n,"apply_method")}
+      ${fieldRow(n,"required_docs")}
+      ${fieldRow(n,"exclusions")}
+    </tbody></table></div>
+
+    <div><h3 class="sec">${esc(n.category||"")} 추가 항목</h3><table class="fields"><tbody>${extras}</tbody></table></div>
+
+    <div><h3 class="sec">링크</h3><div class="links">
+      ${srcLinks}
+      ${typedLinks(n)}
+      <div class="link-row"><span class="lk">첨부 공고문</span>${linkHTML(n.attachment_url)}</div>
+    </div></div>
+
+    ${related?`<div><h3 class="sec">연결된 공고</h3><div class="links">${related}</div></div>`:""}
+
+    <div><h3 class="sec">수집 기록·변경 내역</h3>
+      <table class="fields" style="margin-bottom:10px"><tbody>
+        <tr><th scope="row">최초 수집</th><td class="mono">${esc(fmtTime(n.first_seen_at)||"미기재")}</td></tr>
+        <tr><th scope="row">마지막 확인</th><td class="mono">${esc(fmtTime(n.last_checked_at)||"미기재")}</td></tr>
+        <tr><th scope="row">마지막 변경</th><td class="mono">${n.last_changed_at?esc(fmtTime(n.last_changed_at)):`<span class="null">변경 없음</span>`}</td></tr>
+      </tbody></table>
+      <ul class="timeline">${hist || `<li class="null">기록 없음</li>`}</ul>
+    </div>
+  </div>`;
+}
+
+/* ------------------------- 렌더: 출처 상태 ------------------------- */
+function runChip(st){
+  const m = {"성공":"t-ok","실패":"t-bad","연결 보류":"t-warn"};
+  return `<span class="tag ${m[st]||"t-plain"}">${esc(st||"기록 없음")}</span>`;
+}
+function renderSources(){
+  $("listPanel").hidden = true;
+  $("detail").hidden = true;
+  let host = $("srcPanel");
+  if (!host){ host = document.createElement("section"); host.id = "srcPanel"; host.className = "panel"; $("main").before(host); }
+  host.hidden = false;
+  $("main").style.display = "none";
+  const runs = DATA.sources.map(s=>s.run||{});
+  const ok = runs.filter(r=>r.status==="성공").length, fail = runs.filter(r=>r.status==="실패").length, hold = runs.filter(r=>r.status==="연결 보류").length;
+  const overall = ok === 0 ? `<span class="tag t-bad">실패 — 정상 완료 아님</span>` : (fail||hold) ? `<span class="tag t-warn">부분 성공</span>` : `<span class="tag t-ok">모든 출처 성공</span>`;
+  const isSample = DATA.meta.mode === "sample";
+  const dash = `<span class="null">—</span>`;
+  const num = (r,k) => r.status === "성공" ? (r[k] ?? dash) : `<span class="null" title="실패·보류 출처는 0건으로 표시하지 않습니다">집계 안 됨</span>`;
+  host.innerHTML = `<div class="src-wrap">
+    ${isSample?`<div class="alert info"><b>아래 실행 결과는 화면 시험용 가상 기록입니다.</b>실제로 수집을 실행한 적이 없고, 예약 실행도 연결되지 않았습니다. 실제 연결 상태 열을 기준으로 보세요.</div>`:""}
+    <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center">
+      <b>${isSample?"샘플 ":""}배치 ${esc(DATA.meta.batch_id||"미기재")}</b>
+      ${overall}
+      <span class="note">성공 ${ok} · 실패 ${fail} · 연결 보류 ${hold} · 생성 ${esc(fmtTime(DATA.meta.generated_at)||"미기재")}</span>
+    </div>
+    <div class="tbl-scroll"><table class="src-tbl">
+      <thead><tr><th>출처</th><th>대상 분야</th><th>실제 연결 상태</th><th>연결 단계</th><th>${isSample?"샘플 ":""}실행 결과</th><th style="text-align:right">수집</th><th style="text-align:right">신규</th><th style="text-align:right">변경</th><th>오류 내용</th><th>마지막 성공</th></tr></thead>
+      <tbody>${DATA.sources.map(s=>{ const r = s.run||{}; return `<tr>
+        <td><b>${esc(s.name)}</b></td>
+        <td>${esc((s.categories||[]).join(", "))}</td>
+        <td><span class="tag ${/연결됨/.test(s.connection||"")?"t-ok":"t-warn"}">${esc(s.connection||"미기재")}</span></td>
+        <td>${s.stage?`<span class="tag ${s.stage==="실제 연결 성공"?"t-ok":s.stage==="미연결"?"t-bad":"t-warn"}">${esc(s.stage)}</span>`:`<span class="null">—</span>`}${s.stage_note?`<div class="note">${esc(s.stage_note)}</div>`:""}${s.source_version?`<div class="note">원본 기준일 ${esc(s.source_version)}${s.fetch_mode?" · "+esc(s.fetch_mode):""}</div>`:""}</td>
+        <td>${runChip(r.status)}</td>
+        <td class="num">${num(r,"collected")}</td><td class="num">${num(r,"new")}</td><td class="num">${num(r,"changed")}</td>
+        <td style="max-width:280px">${r.error?esc(r.error):dash}</td>
+        <td class="mono">${r.last_success_at?esc(fmtTime(r.last_success_at)):`<span class="null">없음</span>`}</td></tr>`; }).join("")}</tbody>
+    </table></div>
+    <details class="guide">
+      <summary>실제 수집 프로그램과 연결하는 방법</summary>
+      <p>이 화면은 열릴 때 같은 사이트의 <span class="mono">data/latest.json</span>을 자동으로 읽습니다. 수집기가 매일 이 파일을 새로 만들고, 전체 스키마는 저장소의 <span class="mono">schema/notice-data.schema.json</span>에 있습니다. 파일의 <span class="mono">meta.mode</span>가 <span class="mono">collected</span>가 아니면 상단 띠에 수집 결과로 표시하지 않습니다.</p>
+<pre>{
+  "meta":   { "mode": "collected", "schema_version": "0.1",
+              "batch_id": "2026-10-14", "reference_date": "2026-10-14",
+              "generated_at": "2026-10-14T09:06:00+09:00" },
+  "sources":[ { "key": "kosaf", "name": "한국장학재단", "categories": ["장학금"],
+              "connection": "연결됨 · 공식 API",
+              "run": { "status": "성공|실패|연결 보류", "collected": 12,
+                       "new": 1, "changed": 0, "error": null,
+                       "last_success_at": "..." } } ],
+  "notices":[ { "id": "N-…", "category": "장학금", "title": "...",
+              "sources": [{ "site", "source_id", "url", "site_category" }],
+              "apply_start": null, "apply_end": "2026-10-27", ...,
+              "needs_review_fields": [], "conflicts": [], "history": [] } ]
+}</pre>
+      <ul>
+        <li>정보가 없는 항목은 <span class="mono">null</span>로 보냅니다. 화면은 이를 ‘미기재’로, <span class="mono">needs_review_fields</span>에 든 항목은 ‘확인 필요’로 표시합니다.</li>
+        <li>신청 상태는 기준일과 신청 시작·마감일로 화면에서 계산합니다. 조기마감·취소처럼 날짜로 알 수 없는 상태는 <span class="mono">apply_status_override</span>로 보냅니다.</li>
+        <li>검토 상태 변경은 지금은 브라우저에만 저장됩니다. 다음 단계에서 수집기 DB의 검토 테이블에 기록하도록 바꿀 수 있습니다.</li>
+        <li>실패·연결 보류 출처의 수집·신규·변경 수는 <span class="mono">null</span>로 보내야 하며, 화면은 이를 0건이 아닌 ‘집계 안 됨’으로 표시합니다.</li>
+      </ul>
+    </details>
+  </div>`;
+}
+
+/* ------------------------- 공통 렌더 ------------------------- */
+function renderStrip(){
+  const m = DATA.meta, strip = $("strip");
+  if (m.mode === "sample"){
+    strip.classList.remove("loaded");
+    $("stripTitle").textContent = "샘플 데이터 화면";
+    $("stripText").textContent = "아래 공고·기관·금액·링크는 모두 화면 시험용 가상 데이터입니다. 실제 수집기와 예약 실행은 아직 연결되지 않았습니다.";
+  } else if (m.mode === "collected"){
+    strip.classList.add("loaded");
+    $("stripTitle").textContent = "실제 수집 결과";
+    $("stripText").textContent = `배치 ${m.batch_id||"미기재"} · ${m.batch_status||"상태 미기재"} · 생성 ${fmtTime(m.generated_at)||"미기재"}. 출처별 성공·실패는 ‘출처별 수집 상태’ 탭에서 확인하세요.`;
+  } else if (m.mode === "empty"){
+    strip.classList.remove("loaded");
+    $("stripTitle").textContent = "수집 결과 없음";
+    $("stripText").textContent = LOAD_ERROR || "아직 수집 결과 파일이 없습니다.";
+  } else {
+    strip.classList.remove("loaded");
+    $("stripTitle").textContent = "출처를 알 수 없는 파일";
+    $("stripText").textContent = "meta.mode 값이 없어 수집 결과인지 확인할 수 없습니다.";
+  }
+  $("batchInfo").textContent = m.batch_id ? `· ${m.mode==="sample"?"샘플 ":""}배치 ${m.batch_id}${m.batch_status?" · "+m.batch_status:""}` : "";
+  const c = $("btnCollect");
+  if (m.mode === "collected" && m.collect_trigger_url){
+    c.removeAttribute("disabled"); c.textContent = "지금 수집"; c.title = "GitHub Actions에서 수집 워크플로를 실행합니다(새 탭)";
+    c.onclick = () => { const a = document.createElement("a"); a.href = m.collect_trigger_url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
+  } else {
+    c.setAttribute("disabled",""); c.textContent = "지금 수집 (미연결)"; c.onclick = null;
+  }
+  $("lnkMode").textContent = m.mode === "sample" ? "실제 수집 결과 보기" : "샘플 화면 보기";
+  $("lnkMode").href = m.mode === "sample" ? "./" : "#sample";
+}
+function render(){
+  renderStrip(); renderTabs(); renderFilters();
+  const sp = $("srcPanel"); if (sp && state.view !== "sources") sp.hidden = true;
+  $("filters").hidden = state.view === "sources";
+  renderList();
+}
+
+/* ------------------------- 이벤트 ------------------------- */
+$("viewTabs").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (!b) return; state.view = b.dataset.view; if (urlId() || state.selected) { closeDetail(); } render(); });
+$("catChips").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (!b) return; const c = b.dataset.cat; state.cats.has(c)?state.cats.delete(c):state.cats.add(c); render(); });
+$("q").addEventListener("input", e => { state.q = e.target.value; renderTabs(); renderList(); });
+[["fSource","source"],["fRegion","region"],["fStatus","status"],["fKind","kind"],["fDeadline","deadline"],["fReview","review"]].forEach(([id,k]) =>
+  $(id).addEventListener("change", e => { state[k] = e.target.value; render(); }));
+$("sort").addEventListener("change", e => { state.sort = e.target.value; renderList(); });
+$("statusBar").addEventListener("click", e => { const b = e.target.closest("[data-st]"); if (!b) return; state.status = state.status === b.dataset.st ? "" : b.dataset.st; render(); });
+$("btnReset").addEventListener("click", () => { Object.assign(state,{q:"",source:"",region:"",status:"",kind:"",deadline:"",review:"",showClosed:false}); state.cats.clear(); $("q").value=""; $("fClosed").checked=false; render(); });
+$("fClosed").addEventListener("change", e => { state.showClosed = e.target.checked; render(); });
+/* 상세 선택 상태와 주소(?id=공고ID)를 함께 관리한다. 주소에 id가 없으면 목록, 있으면 그 상세.
+   검색어·필터(state)와 브라우저에 저장된 검토 상태(localStorage)는 건드리지 않는다. */
+function urlId(){ try { return new URLSearchParams(location.search).get("id"); } catch(e){ return null; } }
+function setUrlId(id, push){
+  try {
+    const u = new URL(location.href);
+    if (id) u.searchParams.set("id", id); else u.searchParams.delete("id");
+    if (push) history.pushState({ id, pushed: true }, "", u);
+    else history.replaceState({ id: id || null, pushed: !!(id && history.state && history.state.pushed) }, "", u);
+  } catch(e) {}
+}
+function select(id){
+  state.selected = id; state.mobileOpen = true;
+  setUrlId(id, !urlId());            // 목록→상세는 기록을 남기고(뒤로 가기로 목록), 상세→다른 상세는 바꿔치기
+  renderList(); const d = $("detail"); if (d.scrollTo) d.scrollTo(0,0);
+}
+function closeDetail(){
+  const pushed = !!(urlId() && history.state && history.state.pushed);
+  state.selected = null; state.mobileOpen = false;
+  if (pushed) { try { history.back(); } catch(e) { setUrlId(null, false); } }   // 상세를 연 기록을 되돌림
+  else if (urlId()) setUrlId(null, false);                                        // 상세 주소로 바로 들어온 경우: 주소만 정리
+  renderList();
+}
+// 주소의 id를 화면 상태에 반영(첫 로딩·뒤로/앞으로). 없는 공고 id는 목록으로 돌리고 주소를 정리
+function syncFromUrl(){
+  const id = urlId();
+  const n = id ? DATA.notices.find(x => x.id === id) : null;
+  if (n){ state.selected = id; state.mobileOpen = true; if (state.view === "sources") state.view = "all"; }
+  else {
+    state.selected = null; state.mobileOpen = false;
+    if (id){ setUrlId(null, false); if (DATA.meta.mode !== "empty") toast("주소의 공고를 찾지 못해 목록을 표시합니다"); }
+  }
+}
+window.addEventListener("popstate", () => { if (!DATA || !DATA.notices) return; syncFromUrl(); render(); });
+$("list").addEventListener("click", e => { const r = e.target.closest("[data-id]"); if (r) select(r.dataset.id); });
+$("list").addEventListener("keydown", e => { if ((e.key==="Enter"||e.key===" ") && e.target.dataset.id){ e.preventDefault(); select(e.target.dataset.id); } });
+$("detail").addEventListener("click", e => {
+  const seg = e.target.closest(".seg button");
+  if (seg){
+    const k = scopeKey(); reviewOverrides[k] = reviewOverrides[k] || {};
+    reviewOverrides[k][state.selected] = { status: seg.dataset.v, at: new Date(Date.now()+9*3600000).toISOString().replace("Z","+09:00") };
+    saveOverrides(); renderTabs(); renderList(); toast(`검토 상태를 ‘${seg.dataset.v}’(으)로 바꿨습니다`); return;
+  }
+  const go = e.target.closest("[data-goto]"); if (go){ select(go.dataset.goto); return; }
+  if (e.target.closest("#btnBack")){ closeDetail(); }
+});
+window.addEventListener("resize", () => { if (state.view !== "sources") renderDetail(); });
+
+/* JSON 불러오기 */
+$("fileJson").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const obj = JSON.parse(await f.text());
+    if (!obj || !Array.isArray(obj.notices)) throw new Error("notices 배열이 없습니다");
+    obj.meta = obj.meta || {}; obj.sources = Array.isArray(obj.sources) ? obj.sources : [];
+    obj.notices = obj.notices.map(n => mk(n));
+    DATA = obj; TODAY = obj.meta.reference_date || new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+    state.selected = null; render();
+    toast(`${obj.notices.length}건을 불러왔습니다`);
+  } catch(err){ toast("불러오지 못했습니다: " + err.message + " — 파일 구조를 ‘출처별 수집 상태’ 탭의 연결 안내와 비교하세요"); }
+  e.target.value = "";
+});
+
+/* ------------------------- CSV ------------------------- */
+const CSV_COLS = [
+  ["데이터 구분", n => DATA.meta.mode==="sample" ? "샘플(가상)" : (DATA.meta.mode||"미상")],
+  ["내부 공고 ID","id"],["출처 사이트", n => sourceNames(n).join(" | ")],["출처 공고 ID", n => (n.sources||[]).map(s=>s.source_id).filter(Boolean).join(" | ")||null],
+  ["분야","category"],["공고명","title"],["주최·운영기관","organizer"],["정보 유형","info_type"],["지원대상 원문","target_text"],
+  ["대학생·청년 관련", n => n.youth_relevant===null?null:(n.youth_relevant?"예":"아니오")],["분류 근거","youth_basis"],
+  ["연령 조건","age_condition"],["지역","region"],["거주지역 조건","region_condition"],["소득·재산 조건","income_condition"],["재학·취업 상태 조건","status_condition"],
+  ["혜택 원문","benefit_text"],["지원방식","support_type"],["지원금액","amount_text"],["금액 수치","amount_value"],["금액 단위","amount_unit"],["금액 기간 단위","amount_period"],["금액 한정어","amount_qualifier"],
+  ["신청 시작일","apply_start"],["신청 마감일","apply_end"],["마감 시각","apply_end_time"],["신청기간 원문","period_text"],["신청 상태", n => applyStatus(n)],
+  ["신청방법","apply_method"],["신청 링크","apply_url"],["필요서류","required_docs"],["제외조건·중복수혜 제한","exclusions"],
+  ["출처 게시물 링크", n => (n.sources||[]).map(s=>s.url).filter(Boolean).join(" | ")||null],["주최기관 공식 링크","official_url"],["첨부 공고문 링크","attachment_url"],
+  ["게시일","posted_at"],["최초 수집 시각","first_seen_at"],["마지막 확인 시각","last_checked_at"],["마지막 변경 시각","last_changed_at"],
+  ["변경된 항목", n => (n.changed_fields||[]).join(" | ")||null],["확인 필요 항목", n => (n.needs_review_fields||[]).join(" | ")||null],
+  ["출처 간 충돌", n => (n.conflicts||[]).map(c=>`${c.field}: ${c.values.map(v=>v.site+"="+v.value).join(" / ")}`).join(" | ")||null],
+  ["검토 상태", n => reviewOf(n)],
+  ["신청기간 유형", "period_kind"],
+  ["신청기간 참고", n => (n.period_flags||[]).join(" | ")||null],
+  ["참고사항", n => (n.review_notes||[]).map(x=>`${x.field}: ${x.note}`).join(" | ")||null],
+  ["금액 항목", n => (n.amount_items||[]).map(i=>(i.label?i.label+" ":"")+i.text).join(" | ")||null],
+  ...[...new Set(Object.values(EXTRA_DEFS).flat().map(x=>x[0]))].map(k => {
+    const label = Object.values(EXTRA_DEFS).flat().find(x=>x[0]===k)[1];
+    return ["[추가] "+label, n => n.extra ? (n.extra[k] ?? null) : null];
+  })
+];
+function toCSV(rows){
+  const cell = v => { if (v===null||v===undefined) return ""; const s = String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; };
+  const head = CSV_COLS.map(c=>cell(c[0])).join(",");
+  const body = rows.map(n => CSV_COLS.map(([,k]) => cell(typeof k==="function" ? k(n) : n[k])).join(",")).join("\r\n");
+  return "﻿" + head + "\r\n" + body + "\r\n";
+}
+function openExport(){
+  const all = DATA.notices, view = currentList();
+  const tag = DATA.meta.mode === "sample" ? "SAMPLE_" : "";
+  const d = (TODAY||"").replace(/-/g,"");
+  const opts = [
+    ["all","전체 누적 공고", all, `notices_all_${tag}${d}.csv`],
+    ["new","오늘 신규 공고", all.filter(isNew), `notices_new_${tag}${d}.csv`],
+    ["changed","오늘 변경 공고", all.filter(isChanged), `notices_changed_${tag}${d}.csv`],
+    ["view","현재 화면 목록 (필터 적용)", state.view==="sources"?[]:view, `notices_view_${tag}${d}.csv`]
+  ];
+  const root = $("modalRoot");
+  root.innerHTML = `<div class="modal-back" id="mb"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt">
+    <h2 id="mt">CSV 내보내기</h2>
+    ${DATA.meta.mode==="sample"?`<div class="alert info"><b>샘플 데이터 CSV</b>파일 이름에 SAMPLE이 붙고, 모든 행의 ‘데이터 구분’ 열이 ‘샘플(가상)’로 기록됩니다.</div>`:""}
+    <div class="exp-opts">${opts.map(([k,l,rows])=>`<button class="exp-opt" data-k="${k}" type="button"${rows.length?"":" disabled"}><b>${l}</b><span>${rows.length}건 · 엑셀에서 한글이 깨지지 않도록 UTF-8 BOM 포함</span></button>`).join("")}</div>
+    <div id="fallback"></div>
+    <div style="display:flex;justify-content:flex-end"><button class="btn" id="mClose" type="button">닫기</button></div>
+  </div></div>`;
+  const close = () => { root.innerHTML = ""; };
+  $("mClose").onclick = close;
+  $("mb").addEventListener("click", e => { if (e.target.id === "mb") close(); });
+  root.querySelectorAll(".exp-opt").forEach(b => b.onclick = async () => {
+    const [, label, rows, filename] = opts.find(o=>o[0]===b.dataset.k);
+    const csv = toCSV(rows);
+    let saved = false;
+    try {
+      const dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+      if (dl){ await dl.save({ filename, data: csv }); saved = true; toast(`${filename} 저장을 요청했습니다`); close(); }
+    } catch(err){ if (err && err.code === "declined"){ toast("저장을 취소했습니다"); return; } }
+    if (!saved){
+      $("fallback").innerHTML = `<div class="note">이 화면에서는 파일 저장을 쓸 수 없어 내용을 표시합니다. 복사해서 <span class="mono">${esc(filename)}</span>로 저장하세요.</div>
+        <textarea class="csv" id="csvText" readonly aria-label="${esc(label)} CSV">${esc(csv.replace(/^﻿/,""))}</textarea>
+        <button class="btn" id="btnCopy" type="button">복사</button>`;
+      $("btnCopy").onclick = async () => { const t = $("csvText"); try { await navigator.clipboard.writeText(t.value); toast("복사했습니다"); } catch(e){ t.focus(); t.select(); toast("텍스트를 선택했습니다. Ctrl+C로 복사하세요"); } };
+    }
+  });
+}
+$("btnExport").addEventListener("click", openExport);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && $("modalRoot").innerHTML) $("modalRoot").innerHTML = ""; });
+
+/* 첫 화면: 실제 수집 결과(data/latest.json)를 읽는다. 샘플은 주소 끝에 #sample 이 있을 때만 별도 파일에서 읽는다. */
+let LOAD_ERROR = null;
+async function load(){
+  const wantSample = location.hash === "#sample";
+  const url = wantSample ? SAMPLE_URL : LATEST_URL;
+  try {
+    const r = await fetch(url + "?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status === 404 ? "아직 수집 결과 파일이 없습니다. 첫 수집이 끝나면 여기에 표시됩니다." : "HTTP " + r.status);
+    const obj = await r.json();
+    if (!wantSample && obj.meta && obj.meta.mode !== "collected") throw new Error("data/latest.json 의 meta.mode 가 collected 가 아니어서 표시하지 않습니다.");
+    if (wantSample && (!obj.meta || obj.meta.mode !== "sample")) throw new Error("샘플 파일 형식이 아닙니다.");
+    obj.notices = obj.notices.map(n => mk(n));
+    DATA = obj; LOAD_ERROR = null;
+  } catch(err){
+    DATA = EMPTY; LOAD_ERROR = (wantSample ? "샘플 파일을 읽지 못했습니다: " : "") + err.message;
+  }
+  TODAY = DATA.meta.reference_date;
+  syncFromUrl();
+  render();
+  if (DATA.meta.mode === "empty") $("list").innerHTML = `<li class="empty">${esc(LOAD_ERROR||"표시할 공고가 없습니다.")}<br><a href="#sample">샘플 화면 보기</a></li>`;
+}
+window.addEventListener("hashchange", load);
+load();
+</script>
+
+</body>
+</html>
