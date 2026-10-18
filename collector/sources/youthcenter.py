@@ -335,7 +335,19 @@ def _raw(row: dict) -> dict:
     return {k: v for k, v in (row or {}).items() if k not in VOLATILE}
 
 
+# 같은 정책인데 호출마다 값의 순서만 바뀌는 쉼표 목록(2026-10-16·18 응답 비교에서 키워드 474건이 순서만 달랐음).
+# 원본은 그대로 보관하고, 원본 요약값(변경 감지)을 계산할 때만 순서를 맞춘다.
+ORDERLESS = ("plcyKywdNm",)
+
+
 def _digest(raw: dict) -> str:
+    import copy
     import hashlib
     import json
-    return hashlib.sha256(json.dumps(raw, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:20]
+    r = copy.deepcopy(raw)
+    for sec in r.values():
+        if isinstance(sec, dict):
+            for k in ORDERLESS:
+                if isinstance(sec.get(k), str) and "," in sec[k]:
+                    sec[k] = ",".join(sorted(x.strip() for x in sec[k].split(",")))
+    return hashlib.sha256(json.dumps(r, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:20]

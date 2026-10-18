@@ -127,3 +127,28 @@ def test_review_items_marked_unconfirmed_not_in_db(tmp_path):
     assert "미확정·DB 미반영" in md and "'제외'도 '검토 완료'도 아니며" in md
     rows = list(csv.DictReader((tmp_path / "youthcenter_review_needed.csv").open(encoding="utf-8-sig")))
     assert len(rows) == 1 and rows[0]["처리 상태"] == REVIEW_STATUS and rows[0]["판정"] == "분류 검토"
+
+
+@pytest.mark.parametrize("key", ["policy_lab", "gap_year"])
+def test_project_expense_not_confirmed_as_living(key):
+    # '프로젝트당 지원금', '프로젝트 활동 비용(숙박비·교통비 포함)'은 개인 생활비로 확정하지 않음
+    d = Y.decide(ROWS[key])
+    assert d.verdict == REV and d.reason == Y.RV_PROJECT, d.basis
+
+
+def test_keyword_order_only_is_not_a_change():
+    from collector.store import raw_diff
+    a, b = ROWS["kw_order_1016"], ROWS["kw_order_1018"]
+    assert a["plcyKywdNm"] != b["plcyKywdNm"] and sorted(a["plcyKywdNm"].split(",")) == sorted(b["plcyKywdNm"].split(","))
+    yc = YouthCenter(api_key="K")
+    ia, ib = yc.map_row(a)[0], yc.map_row(b)[0]
+    assert ia.source_digest == ib.source_digest                 # 원본 요약값 같음 → 원문 변경으로 기록하지 않음
+    assert ib.raw["list"]["plcyKywdNm"] == b["plcyKywdNm"]       # 원본은 받은 그대로 보관
+    assert not [c for c in raw_diff(ia.raw, ib.raw) if c["key"] == "plcyKywdNm"]
+
+
+def test_summary_shows_loan_kind(tmp_path):
+    from collector.export import cat_label
+    rec = YouthCenter(api_key="K").map_row(ROWS["icl_tuition"])[0].to_record()
+    assert cat_label(rec) == "장학금 · 학자금대출 · 상환 의무 있음"
+    assert cat_label(YouthCenter(api_key="K").map_row(ROWS["loan_repay"])[0].to_record()) == "장학금 · 기존 대출 상환지원(새 대출 아님)"

@@ -45,11 +45,12 @@ RV_BUSINESS = "사업 비용 지원과 개인 생활비 지급이 함께 있음(
 RV_EMPLOYER_HOUSING = "기업에 지급하는 근로자 주거 지원(개인 직접 지급인지 확인 필요)"
 RV_COST_UNCLEAR = "임대료·보증금 등의 용도(주거용·사업장) 구분 안 됨"
 RV_LOAN_INTEREST = "대출 이자 지원(대출 용도가 주거비·학자금인지 확인 필요)"
+RV_PROJECT = "활동·프로젝트 경비 지원(개인 생활비인지 확인 필요)"
 
 EXCLUDE_REASONS = [EX_NO_ID, EX_RENTAL, EX_EVENT, EX_EMPLOYER, EX_NO_CUE, EX_BUSINESS]
 REVIEW_REASONS = [RV_EVENT_MONEY, RV_EMPLOYER_MIXED, RV_MEDICAL_BIRTH, RV_JOB, RV_STARTUP, RV_ASSET, RV_INKIND,
                   RV_HOUSING_PROVIDE, RV_HOUSING_FIELD, RV_BODY_TUITION, RV_GENERIC_MONEY, RV_CASH_ONLY,
-                  RV_DEDUCTION, RV_HOUSING_SUPPLY, RV_BUSINESS, RV_EMPLOYER_HOUSING, RV_COST_UNCLEAR, RV_LOAN_INTEREST]
+                  RV_DEDUCTION, RV_HOUSING_SUPPLY, RV_BUSINESS, RV_EMPLOYER_HOUSING, RV_COST_UNCLEAR, RV_LOAN_INTEREST, RV_PROJECT]
 
 _MONEY = re.compile(r"\d[\d,.]*\s*(?:만|천|백|억)?\s*원|지급|수당|장려금|바우처|포인트|지역\s*화폐|상품권|현금|환급|"
                     r"이자\s*(?:지원|보전)|이차\s*보전|감면")
@@ -108,6 +109,8 @@ _NEG_AFTER = re.compile(r"^[^.。\n]{0,30}?(?:사용\s*불가|지원\s*(?:불가
 _TITLE_GIVE = re.compile(r"지원|지급|대출|감면|보조|환급")
 # 근로·활동의 대가(임금·강사료·근무수당)는 생활비 지원으로 보지 않는다
 _WAGE = re.compile(r"(?:강사|근무|지역\s*근무|야간|당직)\s*수당|강사료|인건비|임금|급여\s*(?:지급|수준|기준)")
+# 지급액이 활동·프로젝트 수행 경비인 경우(숙박비·교통비가 포함돼도 개인 생활비로 확정하지 않음)
+_PROJECT = re.compile(r"프로젝트\s*(?:당|활동\s*비용|실행\s*비|운영\s*비|비)|활동\s*(?:비용|경비)|실행\s*비")
 _ASSET_METHOD = re.compile(r"적립\s*(?:후|하여)\s*만기|매칭\s*(?:적립|지원)|만기\s*(?:시|에)\s*[^.。]{0,15}(?:지급|수령)|본인\s*저축")
 _TO_EMPLOYER = re.compile(r"(?:기업|사업주|업체|사업장)\s*(?:에\s*대해|에게|에\s*대하여)\s*[^.。]{0,30}?(?:지원|지급)")
 _LIVING_PURPOSE = re.compile(r"자립|정착|생활\s*안정|생계|생활\s*(?:비용|부담)")
@@ -331,6 +334,9 @@ def decide(row: dict, *, include_public_rental: bool = False) -> Decision:
         wage = _find(_WAGE, P, ALL)
         if job or (wage and not strong):
             return Decision(REVIEW, "생활비", RV_JOB, b(job or f"{wage} — 근로·활동의 대가", cue))
+        project = _find(_PROJECT, P, ("지원내용",))
+        if project:
+            return Decision(REVIEW, "생활비", RV_PROJECT, b(project, cue))
         if (strong or generic) and money and youth_ind:
             return Decision(INCLUDE, "생활비", "", b(f"지원 목적: {strong or generic}", f"지원방식: {money}",
                                                       f"수혜자: {youth_ind}", checked))

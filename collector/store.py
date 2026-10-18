@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS runs (
 # ------------------------------------------------------------------ 원본 비교 규칙
 # 비교에서 아예 제외(변경으로 기록하지 않음). 조회수는 원본 보관 단계에서 이미 뺀다.
 RAW_IGNORED = {"조회수"}
+RAW_ORDERLESS = {"plcyKywdNm"}   # 값의 순서만 바뀌어 오는 목록(온통청년 키워드)
 # 비핵심 메타데이터: 이것만 바뀌면 '원본 메타데이터 변경'(검토 상태 유지)
 RAW_META = {"수정일시", "등록일시", "소관기관코드",
             "frstRegDt", "lastMdfcnDt"}   # 온통청년 최초등록·최종수정 일시(필드명 기준, 공식 명세 확인 전)
@@ -98,6 +99,9 @@ def raw_diff(old: dict, new: dict) -> list[dict]:
         for k in sorted(set(a) | set(b)):
             if k in RAW_IGNORED or a.get(k) == b.get(k):
                 continue
+            if k in RAW_ORDERLESS and isinstance(a.get(k), str) and isinstance(b.get(k), str) and \
+                    sorted(x.strip() for x in a[k].split(",")) == sorted(x.strip() for x in b[k].split(",")):
+                continue                     # 쉼표 목록의 순서만 바뀜(온통청년 키워드) — 변경 아님
             out.append({"field": f"원본 {k} [{label}]", "key": k, "before": a.get(k), "after": b.get(k),
                         "kind": "메타데이터" if k in RAW_META else "핵심"})
     return out

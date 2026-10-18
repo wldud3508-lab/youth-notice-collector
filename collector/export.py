@@ -178,7 +178,7 @@ def validate(data: dict):
 COLS = [
     ("내부 공고 ID", "id"), ("출처 사이트", lambda n, t: " | ".join(s["site"] for s in n["sources"])),
     ("출처 공고 ID", lambda n, t: " | ".join(s["source_id"] or "" for s in n["sources"])),
-    ("분야", "category"), ("공고명", "title"), ("주최·운영기관", "organizer"), ("정보 유형", "info_type"),
+    ("분야", lambda n, t: cat_label(n)), ("공고명", "title"), ("주최·운영기관", "organizer"), ("정보 유형", "info_type"),
     ("지원대상 원문", "target_text"),
     ("대학생·청년 관련", lambda n, t: None if n["youth_relevant"] is None else ("예" if n["youth_relevant"] else "아니오")),
     ("분류 근거", "youth_basis"), ("연령 조건", "age_condition"), ("지역", "region"), ("거주지역 조건", "region_condition"),
@@ -220,6 +220,16 @@ def write_csv(path: Path, rows: list[dict], today: str):
 def _short(v, n: int = 160) -> str:
     s = "없음" if v is None else " ".join(str(v).split())
     return s if len(s) <= n else s[:n] + f" …({len(s)}자 중 {n}자)"
+
+
+AID_LABEL = {"학자금대출": "학자금대출 · 상환 의무 있음", "이자지원": "대출 이자지원", "신용회복·채무조정": "신용회복·채무조정",
+             "대출 상환지원": "기존 대출 상환지원(새 대출 아님)"}
+
+
+def cat_label(n: dict) -> str:
+    """분야 표시. 장학금 분야의 대출·이자지원 등은 무상 장학금으로 보이지 않게 지원유형을 붙인다."""
+    aid = (n.get("flags") or {}).get("aid_kind")
+    return f"{n.get('category')} · {AID_LABEL[aid]}" if aid in AID_LABEL else str(n.get("category"))
 
 
 def links_text(n: dict) -> str:
@@ -274,7 +284,7 @@ def todays_findings(data: dict) -> list[str]:
         else:
             out.append(f"- (처음 연결한 출처 등으로 많아서 15건만 표시, 나머지 {len(new) - 15}건은 관리 화면 '오늘 신규'에서 확인)")
     for n, h in new[:15]:
-        out += [f"- **{n['title']}** ({n.get('organizer') or '기관 미기재'}) · [{n['category']}] {n.get('region') or '지역 미기재'}",
+        out += [f"- **{n['title']}** ({n.get('organizer') or '기관 미기재'}) · [{cat_label(n)}] {n.get('region') or '지역 미기재'}",
                 f"  - 지원대상: {_short(n.get('target_text'))}",
                 f"  - 혜택: {_short(n.get('benefit_text'))}",
                 f"  - 신청기간 원문: {n.get('period_text') or '미기재'} → 현재 상태: {apply_status(n, today)}"
@@ -345,7 +355,7 @@ def summary_md(data: dict) -> str:
             continue
         lines.append(f"### {s['name']}: {len(mine)}건")
         for n in mine[:3]:
-            lines.append(f"- [{n['category']}] {n['title']} · 신청기간 원문: {n['period_text'] or '미기재'} · "
+            lines.append(f"- [{cat_label(n)}] {n['title']} · 신청기간 원문: {n['period_text'] or '미기재'} · "
                          f"링크: {links_text(n)}")
         lines.append("")
     return "\n".join(lines) + "\n"
