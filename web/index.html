@@ -196,6 +196,25 @@ details.guide p,details.guide li{font-size:13px;color:var(--muted);max-width:72c
 .exp-opt span{font-size:12.5px;color:var(--muted)}
 textarea.csv{width:100%;min-height:180px;font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2);padding:8px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:13px;z-index:50}
+/* 내 수정본(이 브라우저 전용) */
+.edit-box{border:1px dashed var(--sample);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;background:var(--surface)}
+.edit-box h3{margin:0;font-size:14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.t-mine{background:var(--sample-soft);color:var(--sample)}
+.ef{display:grid;gap:6px;border-top:1px solid var(--line);padding-top:10px}
+.ef-head{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between}
+.ef-head b{font-size:13px}
+.ef textarea,.ef input[type=text],.ef input[type=url],.ef input[type=date],.ef select{width:100%;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r);padding:6px 8px;font:inherit;font-size:16px}
+@media (min-width:980px){.ef textarea,.ef input[type=text],.ef input[type=url],.ef input[type=date],.ef select{font-size:13.5px}}
+.ef textarea{min-height:64px;resize:vertical}
+.ef [disabled]{opacity:.6}
+.ef .chk{align-self:center;padding:0}
+.ef-orig{font-size:12px;color:var(--muted);overflow-wrap:anywhere;white-space:pre-wrap}
+.mine-orig{font-size:12px;color:var(--muted);margin-top:4px;border-left:2px solid var(--sample);padding-left:8px;overflow-wrap:anywhere}
+.edit-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.imp-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.imp-tbl th,.imp-tbl td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.modal .chk{align-self:flex-start}
+.link-row a,.link-row .mono{overflow-wrap:anywhere;word-break:break-all;min-width:0}
 @media (prefers-reduced-motion:no-preference){.row{transition:background .12s}}
 </style>
 </head>
@@ -218,6 +237,8 @@ textarea.csv{width:100%;min-height:180px;font-family:var(--font-mono);font-size:
       <button class="btn" id="btnCollect" disabled title="수집 실행 주소가 연결되지 않았습니다">지금 수집 (미연결)</button>
       <label class="btn ghost" for="fileJson">수집 결과 JSON 불러오기</label>
       <input type="file" id="fileJson" accept="application/json,.json" hidden>
+      <button class="btn ghost" id="btnMine" type="button" title="이 브라우저에만 저장된 내 수정본·메모·검토 상태">내 수정본 백업·가져오기</button>
+      <input type="file" id="fileBackup" accept="application/json,.json" hidden>
       <button class="btn primary" id="btnExport">CSV 내보내기</button>
     </div>
   </div>
@@ -329,7 +350,6 @@ const LS_KEY = "youth-notice-review-v1";
 let reviewOverrides = {};
 try { reviewOverrides = JSON.parse(localStorage.getItem(LS_KEY) || "{}") || {}; } catch(e) { reviewOverrides = {}; }
 function scopeKey(){ return DATA.meta.mode === "collected" ? "collected" : (DATA.meta.mode||"unknown") + ":" + (DATA.meta.batch_id||""); }
-function saveOverrides(){ try { localStorage.setItem(LS_KEY, JSON.stringify(reviewOverrides)); } catch(e){} }
 function reviewOf(n){
   const o = (reviewOverrides[scopeKey()]||{})[n.id];
   const reset = n.flags && n.flags.review_reset_at;
@@ -338,6 +358,317 @@ function reviewOf(n){
 }
 
 const state = { view:"candidates", q:"", cats:new Set(), source:"", region:"", status:"", kind:"", deadline:"", review:"", sort:"priority", selected:null, mobileOpen:false, showClosed:false };
+
+/* ------------------------- 내 수정본(이 브라우저 전용) -------------------------
+   개인용 브라우저 편집 기능이다. 이 브라우저의 localStorage에만 저장되고 다른 기기와 동기화되지 않는다.
+   공용 데이터(data/latest.json)나 수집 DB는 바뀌지 않는다. 버튼을 보이거나 숨기는 것은 보안 장치가 아니다.
+   저장 구조: { format:"youth-notice-edits/1", edits:{ "<source_key>|<source_id>": {
+       fields:{수정한 항목만. null = 일부러 빈 값}, base:{저장 당시 원문 값}, base_digest, base_digest_version,
+       note, saved_at, rev, title_hint, notice_id } } }
+   항목이 fields에 없음 = 수정 없음(원문 표시), 있고 null = 빈 값으로 수정, 키를 지움 = 원문으로 복원. */
+const EDIT_KEY = "youth-notice-edits-v1", EDIT_FORMAT = "youth-notice-edits/1";
+const BACKUP_FORMAT = "youth-notice-backup", BACKUP_VERSION = 1;
+const LOCAL_NOTICE = "이 브라우저에만 저장되며 다른 기기와 동기화되지 않습니다. 개인용 브라우저 편집 기능이며, 공용 데이터나 수집 DB는 바뀌지 않습니다.";
+const EDIT_FIELDS = [
+  ["title","공고명","text"],["benefit_text","혜택 원문","area"],["amount_text","지원금액","text"],["target_text","지원대상 원문","area"],
+  ["apply_start","신청 시작일","date"],["apply_end","신청 마감일","date"],["period_text","신청기간 원문","area"],
+  ["apply_status_override","신청 상태 지정","status"],["official_url","주최기관 공식 링크","url"]];
+const EDIT_KEYS = EDIT_FIELDS.map(f => f[0]);
+const EF = Object.fromEntries(EDIT_FIELDS.map(f => [f[0], { label:f[1], type:f[2] }]));
+const MAX_TEXT = 5000;
+const nowKST = () => new Date(Date.now()+9*3600000).toISOString().replace("Z","+09:00");
+const sameVal = (a,b) => (a ?? null) === (b ?? null);
+const isHttpUrl = s => { if (typeof s !== "string" || !/^https?:\/\/\S+$/i.test(s)) return false; try { const u = new URL(s); return u.protocol === "http:" || u.protocol === "https:"; } catch(e){ return false; } };
+const isYMD = s => { if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false; const d = new Date(s+"T00:00:00Z"); return !isNaN(d) && d.toISOString().slice(0,10) === s; };
+
+/* 저장소 읽기·쓰기. 쓰기는 다시 읽어 같은지 확인한 뒤에만 성공으로 본다 */
+function readEditStore(){
+  let raw;
+  try { raw = localStorage.getItem(EDIT_KEY); } catch(e){ return { ok:false, error:"브라우저 저장소를 읽을 수 없습니다(" + (e && e.name || "오류") + ")" }; }
+  if (raw == null) return { ok:true, store:{ format:EDIT_FORMAT, edits:{} }, raw:null };
+  try {
+    const o = JSON.parse(raw);
+    if (!o || o.format !== EDIT_FORMAT || !o.edits || typeof o.edits !== "object" || Array.isArray(o.edits)) throw new Error("형식이 다릅니다");
+    return { ok:true, store:o, raw };
+  } catch(e){ return { ok:false, error:"저장된 수정본을 해석할 수 없습니다(" + e.message + ")", raw }; }
+}
+function readReviews(){
+  let raw;
+  try { raw = localStorage.getItem(LS_KEY); } catch(e){ return { ok:false, error:"브라우저 저장소를 읽을 수 없습니다(" + (e && e.name || "오류") + ")" }; }
+  if (raw == null) return { ok:true, data:{}, raw:null };
+  try {
+    const o = JSON.parse(raw);
+    if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error("형식이 다릅니다");
+    return { ok:true, data:o, raw };
+  } catch(e){ return { ok:false, error:"저장된 검토 기록을 해석할 수 없습니다(" + e.message + ")", raw }; }
+}
+function writeKey(key, str){
+  try { localStorage.setItem(key, str); }
+  catch(e){ return { ok:false, error: e && e.name === "QuotaExceededError" ? "브라우저 저장 공간이 부족하거나 저장이 막혀 있습니다(QuotaExceededError)" : "브라우저가 저장을 거부했습니다(" + (e && e.name || "오류") + ")" }; }
+  let back;
+  try { back = localStorage.getItem(key); } catch(e){ return { ok:false, error:"저장 후 확인 읽기에 실패했습니다" }; }
+  return back === str ? { ok:true } : { ok:false, error:"저장 후 다시 읽은 내용이 저장하려던 내용과 다릅니다" };
+}
+function restoreKey(key, prevRaw){
+  try { if (prevRaw == null) localStorage.removeItem(key); else localStorage.setItem(key, prevRaw); return (localStorage.getItem(key) ?? null) === (prevRaw ?? null); }
+  catch(e){ return false; }
+}
+
+let EDITS = { format:EDIT_FORMAT, edits:{} }, EDITS_ERROR = null, EDITS_RAW = null;
+function loadEdits(){
+  const r = readEditStore();
+  if (r.ok){ EDITS = r.store; EDITS_ERROR = null; EDITS_RAW = null; }
+  else { EDITS = { format:EDIT_FORMAT, edits:{} }; EDITS_ERROR = r.error; EDITS_RAW = r.raw ?? null; }   // 해석 못 한 기록은 덮어쓰지 않음
+}
+loadEdits();
+
+const editsActive = () => DATA.meta.mode === "collected";
+function editKeyOf(n){ const o = n._orig || n, s = (o.sources||[])[0]; return s && s.source_key && s.source_id ? s.source_key + "|" + s.source_id : "id|" + o.id; }
+const isMine = n => !!(n._edit && n._edit.fields && Object.keys(n._edit.fields).length);
+const hasMemo = n => !!(n._edit && n._edit.note);
+const editedField = (n, k) => !!(n._edit && n._edit.fields && Object.prototype.hasOwnProperty.call(n._edit.fields, k));
+
+/* 원문 위에 수정본을 겹친 화면용 사본. 상태 계산·필터·마감 숨김·D-day·후보·정렬은 모두 이 사본을 쓴다 */
+function applyFields(o, fields){
+  const n = Object.assign({}, o, fields);
+  const dateEdited = "apply_start" in fields || "apply_end" in fields;
+  if (dateEdited){
+    if (n.apply_start || n.apply_end) n.period_kind = "기간 명시";
+    else if (o.period_kind === "기간 명시") n.period_kind = "분류 안 됨";        // 날짜를 모두 비움: 기간 유형을 '기간 명시'로 남기지 않음
+    if ("apply_end" in fields && !sameVal(fields.apply_end, o.apply_end)) n.apply_end_time = null;   // 원문 마감 시각은 다른 날짜의 시각
+  }
+  if ("amount_text" in fields && !sameVal(fields.amount_text, o.amount_text)){   // 원문 금액에서 뽑은 구조화 값은 더 이상 맞지 않음
+    n.amount_items = []; n.amount_value = null; n.amount_unit = null; n.amount_period = null; n.amount_qualifier = null;
+  }
+  return n;
+}
+function overlay(o){
+  if (!editsActive()) return o;
+  const rec = EDITS.edits[editKeyOf(o)];
+  if (!rec) return o;
+  const n = applyFields(o, rec.fields || {});
+  n._orig = o; n._edit = rec;
+  return n;
+}
+function rebuildNotices(){
+  if (!DATA.raw) DATA.raw = DATA.notices;
+  DATA.notices = DATA.raw.map(overlay);
+}
+/* 수정 당시 원문과 지금 원문 비교. 요약값(source_digest)은 수집기가 조회수·수집 시각을 빼고 키워드 순서를 정렬해 만든 값 */
+function editDrift(o, rec){
+  const cur = o.flags && o.flags.source_digest, curV = o.flags && o.flags.digest_version;
+  const fieldsChanged = Object.keys(rec.fields||{}).filter(k => rec.base && Object.prototype.hasOwnProperty.call(rec.base, k) && !sameVal(rec.base[k], o[k]));
+  let digest = "unknown";
+  if (rec.base_digest && cur && sameVal(rec.base_digest_version, curV)) digest = rec.base_digest === cur ? "same" : "changed";
+  return { digest, fieldsChanged };
+}
+function dateStatusOf(n){ return applyStatus(Object.assign({}, n, { apply_status_override:null })); }
+/* 날짜와 신청 상태 지정이 어긋나면 경고 문구 */
+function overrideConflict(n){
+  const ov = n.apply_status_override;
+  if (!ov || !(n.apply_start || n.apply_end)) return null;
+  const ds = dateStatusOf(n);
+  return ds === ov ? null : { ov, ds, mine: editedField(n, "apply_status_override") };
+}
+function conflictText(c, inForm){
+  return `신청 상태 지정값 ‘${c.ov}’이(가) 날짜 기준 상태 ‘${c.ds}’와 다릅니다. ${inForm?"저장하면 ":""}지정값이 우선 적용됩니다. ` +
+    `날짜로 자동 계산하려면 ‘신청 상태 지정’에서 ‘이 항목 수정’을 켜고 ‘자동 계산(상태 지정 해제)’을 고른 뒤 저장하세요.` +
+    (c.mine ? "" : " (이 지정값은 수집 데이터에 들어 있던 값입니다.)");
+}
+
+/* ---- 편집 입력(저장 전). 새로고침하면 사라지므로 저장 실패 시 백업을 안내한다 ---- */
+const drafts = {};
+const toInput = (k, v) => v == null ? "" : (EF[k].type === "date" ? String(v).slice(0,10) : String(v));
+function fromInput(k, v){
+  const s = EF[k].type === "date" || EF[k].type === "status" ? String(v||"") : String(v||"").replace(/\r\n/g,"\n").trim();
+  return s === "" ? null : s;
+}
+function startEdit(n){
+  const o = n._orig || n, key = editKeyOf(o), rec = EDITS.edits[key] || null;
+  const fields = {};
+  EDIT_KEYS.forEach(k => { const on = !!(rec && rec.fields && Object.prototype.hasOwnProperty.call(rec.fields, k)); fields[k] = { on, value: toInput(k, on ? rec.fields[k] : o[k]) }; });
+  drafts[n.id] = { key, fields, note: rec && rec.note ? rec.note : "", baseRev: rec ? (rec.rev|0) : 0, baseSaved: rec ? rec.saved_at || null : null, error:null, conflict:null, dirty:false };
+}
+function draftFields(d){ const f = {}; EDIT_KEYS.forEach(k => { if (d.fields[k].on) f[k] = fromInput(k, d.fields[k].value); }); return f; }
+function validateFields(fields, o){
+  const errs = [];
+  Object.entries(fields).forEach(([k,v]) => {
+    const t = EF[k] && EF[k].type, label = EF[k] ? EF[k].label : k;
+    if (!t){ errs.push(`알 수 없는 항목: ${k}`); return; }
+    if (v === null) return;
+    if (typeof v !== "string"){ errs.push(`${label}: 글자 값이 아닙니다`); return; }
+    if (v.length > MAX_TEXT) errs.push(`${label}: ${MAX_TEXT}자를 넘습니다`);
+    if (t === "date" && !isYMD(v)) errs.push(`${label}: 날짜 형식(YYYY-MM-DD)이 아닙니다`);
+    if (t === "url" && !isHttpUrl(v)) errs.push(`${label}: http:// 또는 https://로 시작하는 주소만 저장할 수 있습니다`);
+    if (t === "status" && !STATUSES.includes(v)) errs.push(`${label}: 허용되지 않은 상태 값입니다`);
+  });
+  if (o){
+    const s = "apply_start" in fields ? fields.apply_start : o.apply_start, e = "apply_end" in fields ? fields.apply_end : o.apply_end;
+    if (s && e && isYMD(String(s).slice(0,10)) && isYMD(String(e).slice(0,10)) && s.slice(0,10) > e.slice(0,10)) errs.push(`신청 시작일(${s})이 마감일(${e})보다 늦습니다`);
+  }
+  return errs;
+}
+function buildRecord(o, fields, note, curRev){
+  return { fields, base: Object.fromEntries(EDIT_KEYS.map(k => [k, o[k] ?? null])),
+    base_digest: (o.flags && o.flags.source_digest) || null, base_digest_version: (o.flags && o.flags.digest_version) ?? null,
+    title_hint: o.title || null, notice_id: o.id, note: note || null, saved_at: nowKST(), rev: curRev + 1 };
+}
+function saveDraft(id, force){
+  const n = DATA.notices.find(x => x.id === id), d = drafts[id];
+  if (!n || !d) return;
+  const o = n._orig || n;
+  const fields = draftFields(d), note = String(d.note||"").trim();
+  const errs = validateFields(fields, o);
+  if (note.length > MAX_TEXT) errs.push(`검토 메모: ${MAX_TEXT}자를 넘습니다`);
+  if (errs.length){ d.error = { kind:"invalid", msgs:errs }; renderDetail(); return; }
+  const r = readEditStore();                       // 저장 직전 저장소를 다시 읽어 다른 탭 변경을 확인
+  if (!r.ok){ d.error = { kind:"read", msgs:[r.error + " — 기존 기록을 덮어쓰지 않도록 저장하지 않았습니다"] }; renderDetail(); return; }
+  const store = r.store, cur = store.edits[d.key] || null, curRev = cur ? (cur.rev|0) : 0, curSaved = cur ? cur.saved_at || null : null;
+  if (!force && (curRev !== d.baseRev || curSaved !== d.baseSaved)){
+    d.conflict = { cur }; d.error = null; renderDetail(); return;
+  }
+  const restoring = !Object.keys(fields).length && !note;
+  if (restoring) delete store.edits[d.key];
+  else store.edits[d.key] = buildRecord(o, fields, note, Math.max(curRev, d.baseRev));
+  const w = writeKey(EDIT_KEY, JSON.stringify(store));
+  if (!w.ok){ d.error = { kind:"write", msgs:[w.error] }; d.conflict = null; renderDetail(); return; }
+  EDITS = store; EDITS_ERROR = null; delete drafts[id];
+  rebuildNotices(); render();
+  const vis = currentList().some(x => x.id === id);
+  toast((restoring ? "원문으로 복원했습니다(이 브라우저에 저장됨)" : "이 브라우저에 저장했습니다") + (vis ? "" : " · 현재 필터·보기에서는 목록에 보이지 않습니다"), 3600);
+}
+
+/* 백업 파일 */
+function buildBackup(draftId){
+  const er = readEditStore(), rr = readReviews();
+  const edits = JSON.parse(JSON.stringify(er.ok ? er.store.edits : EDITS.edits));
+  const b = { format:BACKUP_FORMAT, version:BACKUP_VERSION, exported_at:nowKST(), notice:LOCAL_NOTICE,
+    edits, reviews: rr.ok ? rr.data : reviewOverrides };
+  if (!er.ok && er.raw != null) b.edits_unparsed_raw = er.raw;          // 해석 못 한 기록도 원문 그대로 보관
+  if (!rr.ok && rr.raw != null) b.reviews_unparsed_raw = rr.raw;
+  if (draftId && drafts[draftId]){                                       // 저장 못 한 입력을 백업에 포함
+    const n = DATA.notices.find(x => x.id === draftId), d = drafts[draftId];
+    if (n){ const o = n._orig || n, cur = edits[d.key]; const rec = buildRecord(o, draftFields(d), String(d.note||"").trim(), cur ? (cur.rev|0) : 0); rec.from_unsaved_input = true; edits[d.key] = rec; }
+  }
+  return b;
+}
+async function downloadText(filename, text, mime){
+  try {
+    const dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+    if (dl){ await dl.save({ filename, data: text }); return "saved"; }
+  } catch(err){ if (err && err.code === "declined") return "declined"; }
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type: mime }));
+    const a = document.createElement("a"); a.href = url; a.download = filename; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+    return "blob";
+  } catch(e){ return "failed"; }
+}
+async function exportBackup(draftId){
+  const text = JSON.stringify(buildBackup(draftId), null, 2);
+  const filename = `youth-notice-backup_${nowKST().slice(0,16).replace(/[-:]/g,"").replace("T","_")}.json`;
+  const r = await downloadText(filename, text, "application/json");
+  if (r === "declined") { toast("백업 저장을 취소했습니다"); return; }
+  showCopyFallback(filename, text, r === "failed");
+  if (r !== "failed") toast(`${filename} 내려받기를 요청했습니다`, 3200);
+}
+function showCopyFallback(filename, text, failed){
+  if (!$("mineFallback")){ if (!failed) return; openMine(); }   // 편집창에서 받은 경우: 실패했을 때만 창을 열어 복사본 제공
+  const host = $("mineFallback"); if (!host) return;
+  host.innerHTML = `<details${failed?" open":""}><summary class="note">${failed?"파일로 내려받지 못했습니다 — ":""}파일이 받아지지 않으면 이 내용을 복사해 <span class="mono">${esc(filename)}</span>로 저장하세요</summary>
+    <textarea class="csv" id="bkText" readonly aria-label="백업 JSON">${esc(text)}</textarea>
+    <button class="btn" id="btnBkCopy" type="button">복사</button></details>`;
+  $("btnBkCopy").onclick = async () => { const t = $("bkText"); try { await navigator.clipboard.writeText(t.value); toast("복사했습니다"); } catch(e){ t.focus(); t.select(); toast("텍스트를 선택했습니다. Ctrl+C(⌘C)로 복사하세요"); } };
+}
+
+/* 백업 가져오기: 검증 → 미리보기 → 선택 확인 후에만 저장. 없는 항목은 지우지 않는다 */
+function sanitizeEditRec(key, rec){
+  const errs = [];
+  if (typeof key !== "string" || key.length > 300 || !/^[^|]+\|.+$/.test(key)) errs.push("연결 키 형식 오류");
+  if (!rec || typeof rec !== "object" || Array.isArray(rec)) return { errs: errs.concat("기록이 객체가 아님") };
+  const f = rec.fields;
+  if (!f || typeof f !== "object" || Array.isArray(f)) errs.push("fields 형식 오류");
+  else errs.push(...validateFields(f, null));
+  if (rec.note != null && (typeof rec.note !== "string" || rec.note.length > MAX_TEXT)) errs.push("검토 메모 형식 오류");
+  if (!Number.isInteger(rec.rev) || rec.rev < 1) errs.push("rev 형식 오류");
+  if (typeof rec.saved_at !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(rec.saved_at)) errs.push("저장 시각 형식 오류");
+  const base = rec.base;
+  if (base != null && (typeof base !== "object" || Array.isArray(base) || Object.entries(base).some(([k,v]) => !EDIT_KEYS.includes(k) || (v !== null && typeof v !== "string")))) errs.push("base 형식 오류");
+  if (rec.base_digest != null && typeof rec.base_digest !== "string") errs.push("base_digest 형식 오류");
+  if (errs.length) return { errs };
+  const clean = { fields: Object.fromEntries(Object.entries(f).map(([k,v]) => [k, v])), base: base ? Object.assign({}, base) : {},
+    base_digest: rec.base_digest ?? null, base_digest_version: Number.isInteger(rec.base_digest_version) ? rec.base_digest_version : null,
+    title_hint: typeof rec.title_hint === "string" ? rec.title_hint.slice(0,300) : null, notice_id: typeof rec.notice_id === "string" ? rec.notice_id.slice(0,40) : null,
+    note: rec.note ? rec.note : null, saved_at: rec.saved_at, rev: rec.rev };
+  if (!Object.keys(clean.fields).length && !clean.note) return { errs:["수정 항목과 메모가 모두 비어 있음"] };
+  return { errs:[], rec: clean };
+}
+const recSame = (a, b) => JSON.stringify(a.fields) === JSON.stringify(b.fields) && sameVal(a.note, b.note);
+function parseBackup(obj){
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return { fatal:"JSON 객체가 아닙니다" };
+  if (obj.format !== BACKUP_FORMAT) return { fatal:`백업 파일 형식이 아닙니다(format: ${String(obj.format ?? "없음").slice(0,40)})` };
+  if (!Number.isInteger(obj.version)) return { fatal:"version 값이 없습니다" };
+  if (obj.version > BACKUP_VERSION) return { fatal:`이 화면보다 새 버전(${obj.version})의 백업입니다. 화면을 최신으로 바꾼 뒤 가져오세요` };
+  if (obj.version < 1) return { fatal:`지원하지 않는 버전(${obj.version})입니다` };
+  if (obj.edits != null && (typeof obj.edits !== "object" || Array.isArray(obj.edits))) return { fatal:"edits 형식이 잘못됐습니다" };
+  if (obj.reviews != null && (typeof obj.reviews !== "object" || Array.isArray(obj.reviews))) return { fatal:"reviews 형식이 잘못됐습니다" };
+  const er = readEditStore(), rr = readReviews();
+  if (!er.ok) return { fatal: er.error + " — 현재 기록을 보호하기 위해 가져오기를 멈췄습니다" };
+  if (!rr.ok) return { fatal: rr.error + " — 현재 기록을 보호하기 위해 가져오기를 멈췄습니다" };
+  const rawKeys = new Set((DATA.raw||[]).map(editKeyOf)), rawIds = new Set((DATA.raw||[]).map(n => n.id));
+  const titleOfKey = k => { const n = (DATA.raw||[]).find(x => editKeyOf(x) === k); return n ? n.title : null; };
+  const items = [];
+  Object.entries(obj.edits || {}).forEach(([key, rec]) => {
+    const s = sanitizeEditRec(key, rec);
+    if (s.errs.length){ items.push({ type:"edit", key, state:"invalid", reason:s.errs.join(", "), title:(rec && rec.title_hint) || null }); return; }
+    const cur = er.store.edits[key];
+    items.push({ type:"edit", key, rec:s.rec, cur: cur || null, state: !cur ? "new" : recSame(cur, s.rec) ? "same" : "conflict",
+      missing: editsActive() && !rawKeys.has(key), title: titleOfKey(key) || s.rec.title_hint });
+  });
+  Object.entries(obj.reviews || {}).forEach(([scope, m]) => {
+    if (typeof scope !== "string" || scope.length > 120 || !m || typeof m !== "object" || Array.isArray(m)){ items.push({ type:"review", key:String(scope), state:"invalid", reason:"검토 기록 묶음 형식 오류" }); return; }
+    Object.entries(m).forEach(([id, v]) => {
+      const bad = typeof id !== "string" || id.length > 60 || !v || typeof v !== "object" || !REVIEWS.includes(v.status) || typeof v.at !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(v.at);
+      if (bad){ items.push({ type:"review", scope, id, key:scope+" / "+id, state:"invalid", reason:"검토 상태 값 형식 오류" }); return; }
+      const cur = (rr.data[scope]||{})[id];
+      const n = (DATA.raw||[]).find(x => x.id === id);
+      items.push({ type:"review", scope, id, key:scope+" / "+id, val:{ status:v.status, at:v.at }, cur: cur || null,
+        state: !cur ? "new" : (cur.status === v.status && cur.at === v.at) ? "same" : "conflict",
+        missing: scope === scopeKey() && !rawIds.has(id), title: n ? n.title : null });
+    });
+  });
+  return { items, exported_at: typeof obj.exported_at === "string" ? obj.exported_at : null };
+}
+function applyImport(items){
+  const er = readEditStore(), rr = readReviews();
+  if (!er.ok || !rr.ok) return { ok:false, msg:(er.error||rr.error) + " — 아무것도 반영하지 않았습니다" };
+  const es = er.store, rs = rr.data;
+  let ne = 0, nr = 0;
+  items.forEach(it => {
+    if (it.type === "edit"){ const cur = es.edits[it.key]; es.edits[it.key] = Object.assign({}, it.rec, { rev: (cur ? (cur.rev|0) : 0) + 1, imported_at: nowKST() }); ne++; }
+    else { rs[it.scope] = rs[it.scope] || {}; rs[it.scope][it.id] = { status: it.val.status, at: it.val.at }; nr++; }
+  });
+  if (ne){ const w = writeKey(EDIT_KEY, JSON.stringify(es)); if (!w.ok){ restoreKey(EDIT_KEY, er.raw); return { ok:false, msg:`수정본 저장 실패(${w.error}) — 아무것도 반영하지 않았습니다` }; } }
+  if (nr){
+    const w = writeKey(LS_KEY, JSON.stringify(rs));
+    if (!w.ok){
+      restoreKey(LS_KEY, rr.raw);
+      const back = ne ? restoreKey(EDIT_KEY, er.raw) : true;
+      return back ? { ok:false, msg:`검토 상태 저장 실패(${w.error}) — 수정본 반영도 되돌려 아무것도 반영하지 않았습니다` }
+                  : { ok:false, partial:true, msg:`검토 상태 저장 실패(${w.error}). 수정본 ${ne}건은 반영됐고 되돌리지 못했습니다. 검토 상태는 반영되지 않았습니다` };
+    }
+  }
+  return { ok:true, ne, nr };
+}
+function afterStorageChange(){
+  loadEdits();
+  const rr = readReviews(); if (rr.ok) reviewOverrides = rr.data;
+  if (DATA.raw){ rebuildNotices(); render(); }
+}
+window.addEventListener("storage", e => {
+  if (e.key === EDIT_KEY || e.key === LS_KEY || e.key === null){ afterStorageChange(); }
+});
+window.addEventListener("beforeunload", e => { if (Object.values(drafts).some(d => d.dirty)){ e.preventDefault(); e.returnValue = ""; } });
 
 /* ------------------------- 날짜·상태 계산 ------------------------- */
 const dayMs = 86400000;
@@ -384,6 +715,7 @@ const VIEWS = [
   ["soon","마감 임박 (7일)", isSoon],
   ["upcoming","신청예정", n => applyStatus(n) === "신청예정"],
   ["check","확인 필요", needsCheck],
+  ["mine","내 수정·메모", n => isMine(n) || hasMemo(n)],
   ["sources","출처별 수집 상태", null]
 ];
 
@@ -400,6 +732,7 @@ function val(n, key, v){ return (v === null || v === undefined || v === "") ? nu
 function linkHTML(url, label){
   if (!url) return `<span class="null">미기재</span>`;
   if (url.startsWith("sample://")) return `<span class="fake-link">샘플 주소 — 실제 링크 없음</span> <span class="mono null">${esc(url)}</span>`;
+  if (!/^https?:\/\//i.test(url)) return `<span class="mono">${esc(url)}</span> <span class="note">주소 형식이 아니어서 링크로 만들지 않음</span>`;
   return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label || url)}</a>`;
 }
 function aidLabel(a){
@@ -432,7 +765,7 @@ function statusHTML(n){
             : st === "상시" ? "원문 표기 · 현재 접수 여부는 원문 확인" : "";
   return `<span class="status ${map[st]||""}">${esc(st)}${esc(extra)}${sub?`<span class="status-sub">${sub}</span>`:""}</span>`;
 }
-function toast(msg){ const t = document.createElement("div"); t.className="toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 2400); }
+function toast(msg, ms){ const t = document.createElement("div"); t.className="toast"; t.setAttribute("role","status"); t.textContent = msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms || 2400); }
 
 /* ------------------------- 필터 ------------------------- */
 function baseFiltered(){
@@ -516,6 +849,9 @@ function rowHTML(n){
   const rv = reviewOf(n);
   const tags = [];
   if (DATA.meta.mode === "sample") tags.push(`<span class="tag t-sample">샘플</span>`);
+  if (isMine(n)) tags.push(`<span class="tag t-mine">내 수정</span>`);
+  if (hasMemo(n)) tags.push(`<span class="tag t-mine">메모</span>`);
+  if (drafts[n.id] && drafts[n.id].dirty) tags.push(`<span class="tag t-bad">저장 안 한 입력</span>`);
   if (isNew(n)) tags.push(`<span class="tag t-new">오늘 신규</span>`);
   if (isChanged(n)) tags.push(`<span class="tag t-chg">오늘 변경</span>`);
   if ((n.conflicts||[]).length) tags.push(`<span class="tag t-bad">원문 충돌</span>`);
@@ -573,9 +909,17 @@ function renderList(){
 }
 
 /* ------------------------- 렌더: 상세 ------------------------- */
+function mineNote(n, key){
+  if (!editedField(n, key)) return "";
+  const o = n._orig, ov = o[key];
+  const ot = ov == null || ov === "" ? "미기재" : (EF[key] && EF[key].type === "date" ? fmtDate(ov) : cutText(ov, 300));
+  return ` <span class="tag t-mine">내 수정</span><div class="mine-orig">원문: ${esc(ot)}</div>`;
+}
 function fieldRow(n, key, label, display){
   const raw = n[key];
-  const shown = display !== undefined ? display : val(n, key, raw);
+  let shown = display !== undefined ? display : val(n, key, raw);
+  if (editedField(n, key) && (raw === null || raw === "")) shown = `<span class="null">빈 값으로 수정함</span>`;
+  shown += mineNote(n, key);
   const ev = n.evidence && n.evidence[key] ? `<div class="ev">${esc(n.evidence[key])}</div>` : "";
   const chg = (n.changed_fields||[]).includes(key) && isChanged(n) ? ` <span class="tag t-chg">오늘 변경</span>` : "";
   return `<tr><th scope="row">${esc(label || LABELS[key] || key)}</th><td>${shown}${chg}${ev}</td></tr>`;
@@ -613,13 +957,16 @@ function renderDetail(){
   const nrOther = nr.filter(f => f !== "apply_start" && f !== "apply_end");
   if (nrOther.length) alerts.push(`<div class="alert warn"><b>필수 확인 항목</b>${nrOther.map(f=>esc(LABELS[f]||f)).join(", ")}</div>`);
   const stD = applyStatus(n);
-  if (stD === "기간 확인 필요") alerts.push(`<div class="alert warn"><b>신청기간 확인 필요${n.period_kind?` — 유형: ${esc(n.period_kind)}`:""}</b>원문에 이번 신청기간이 확정돼 있지 않아 날짜를 만들지 않았습니다. 사유가 분류돼도 실제 기간은 원문에서 확인해야 합니다.</div>`);
+  const datesMine = editedField(n,"apply_start") || editedField(n,"apply_end");
+  if (stD === "기간 확인 필요" && datesMine) alerts.push(`<div class="alert warn"><b>신청기간 확인 필요 — 내 수정본에서 신청 날짜를 비웠습니다</b>날짜가 없어 신청 상태를 확정하지 않습니다. 원문 날짜로 돌아가려면 ‘내 수정본’에서 해당 항목을 원문으로 복원하세요.</div>`);
+  else if (stD === "기간 확인 필요") alerts.push(`<div class="alert warn"><b>신청기간 확인 필요${n.period_kind?` — 유형: ${esc(n.period_kind)}`:""}</b>원문에 이번 신청기간이 확정돼 있지 않아 날짜를 만들지 않았습니다. 사유가 분류돼도 실제 기간은 원문에서 확인해야 합니다.</div>`);
   if (stD === ST_ELAPSED) alerts.push(`<div class="alert warn"><b>${ST_ELAPSED}</b>원문에 적힌 연도·끝 달(${esc(n.period_month_end)})이 기준일보다 지났습니다. 실제 모집 종료가 확정된 것은 아니며, 일자는 원문에 없습니다.</div>`);
   if (stD === ST_CLOSED_TEXT) alerts.push(`<div class="alert info"><b>${ST_CLOSED_TEXT}</b>원문에 ${esc(n.period_closed_year)}년 모집 종료(또는 미모집)가 명시돼 있습니다.</div>`);
   if (stD === "상시") alerts.push(`<div class="alert info"><b>상시 표기</b>원문이 ‘상시’로 적혀 있을 뿐, 지금 실제로 접수 가능한지는 원문에서 확인해야 합니다.</div>`);
   if ((n.period_flags||[]).length) alerts.push(`<div class="alert info"><b>신청기간 참고</b>${(n.period_flags||[]).map(esc).join(" · ")}</div>`);
   if ((n.review_notes||[]).length) alerts.push(`<div class="alert info"><b>참고사항(필수 확인 아님)</b>${n.review_notes.map(x=>`${esc(LABELS[x.field]||x.field)}: ${esc(x.note)}`).join("<br>")}</div>`);
   if (n.flags && n.flags.source_diff_unverified) alerts.push(`<div class="alert warn"><b>추가 검토 · 원본 변경 확인</b>${esc(n.flags.source_diff_unverified.note)}. 공고 원문(출처 링크)에서 현재 내용을 직접 확인해 주세요. 공고가 실제로 바뀐 시각은 알 수 없어 기록하지 않았습니다.</div>`);
+  if (n.flags && n.flags.not_seen_since) alerts.push(`<div class="alert warn"><b>최근 수집 API 응답에서 미수신</b>${esc(n.flags.not_seen_since)} 수집부터 출처 API 응답에 이 공고가 없었습니다. 삭제·마감으로 처리하지 않고 기록을 보관 중입니다(마지막 확인 ${esc(fmtTime(n.last_checked_at)||"미기재")}). 현재 접수 여부는 원문에서 확인하세요.</div>`);
   if (n.flags && n.flags.merged) alerts.push(`<div class="alert info"><b>여러 출처 연결됨</b>${esc(n.flags.merged)}</div>`);
 
   const extras = (EXTRA_DEFS[n.category]||[]).map(([k,l]) => {
@@ -658,7 +1005,7 @@ function renderDetail(){
         ${statusHTML(n)}
         <span class="mono null">${esc(n.id)}</span>
       </div>
-      <h2 class="d-title">${esc(n.title||"(공고명 미기재)")}</h2>
+      <h2 class="d-title">${editedField(n,"title") && !n.title ? `<span class="null">(공고명 빈 값으로 수정함)</span>` : esc(n.title||"(공고명 미기재)")}</h2>${mineNote(n,"title")}
       <div class="d-org">${val(n,"organizer",n.organizer)}</div>
     </div>
 
@@ -671,10 +1018,12 @@ function renderDetail(){
       <div class="note">${ovr?`이 브라우저에서 ${esc(fmtTime(ovr.at))}에 변경. `:""}검토 상태는 현재 이 브라우저에만 저장됩니다. 수집기 DB 연결 후에는 DB에 기록됩니다.</div>
     </div>
 
+    ${editBoxHTML(n)}
+
     ${alerts.join("")}
 
     <div><h3 class="sec">지원대상·자격</h3><table class="fields"><tbody>
-      <tr><th scope="row">지원대상 원문</th><td>${n.target_text?`<div class="quote">${esc(n.target_text)}</div>`:nullCell(n,"target_text")}${((n.flags||{}).clipped_fields||[]).length?`<div class="note">화면용으로 줄인 항목이 있습니다(${esc(n.flags.clipped_fields.map(f=>LABELS[f]||f).join(", "))}). 금액·자격 판정은 원문 전체로 했고, 원문 전체는 수집 DB에 보관됩니다.</div>`:""}</td></tr>
+      <tr><th scope="row">지원대상 원문</th><td>${n.target_text?`<div class="quote">${esc(n.target_text)}</div>`:(editedField(n,"target_text")?`<span class="null">빈 값으로 수정함</span>`:nullCell(n,"target_text"))}${mineNote(n,"target_text")}${((n.flags||{}).clipped_fields||[]).length?`<div class="note">화면용으로 줄인 항목이 있습니다(${esc(n.flags.clipped_fields.map(f=>LABELS[f]||f).join(", "))}). 금액·자격 판정은 원문 전체로 했고, 원문 전체는 수집 DB에 보관됩니다.</div>`:""}</td></tr>
       ${fieldRow(n,"youth_relevant","대학생·청년 관련", n.youth_relevant===null?nullCell(n,"youth_relevant"):(n.youth_relevant?"관련 있음":"관련 없음") + (n.youth_basis?`<div class="note">근거: ${esc(n.youth_basis)}</div>`:""))}
       ${fieldRow(n,"age_condition")}
       ${fieldRow(n,"region_condition")}
@@ -690,7 +1039,8 @@ function renderDetail(){
 
     <div><h3 class="sec">신청</h3><table class="fields"><tbody>
       ${fieldRow(n,"period_text")}
-      <tr><th scope="row">신청기간 유형</th><td>${n.period_kind?esc(n.period_kind):`<span class="null">미분류</span>`}</td></tr>
+      <tr><th scope="row">신청기간 유형</th><td>${n.period_kind?esc(n.period_kind):`<span class="null">미분류</span>`}${datesMine && n.period_kind !== n._orig.period_kind?`<div class="mine-orig">내 수정 날짜에 맞춰 조정 · 원문 유형: ${esc(n._orig.period_kind||"미분류")}</div>`:""}</td></tr>
+      ${editedField(n,"apply_status_override")?`<tr><th scope="row">신청 상태 지정</th><td>${n.apply_status_override?esc(n.apply_status_override):`<span class="null">자동 계산(지정 해제)</span>`}${mineNote(n,"apply_status_override")}</td></tr>`:""}
       ${fieldRow(n,"apply_start",null,n.apply_start?esc(fmtDate(n.apply_start)):nullCell(n,"apply_start"))}
       ${fieldRow(n,"apply_end",null,n.apply_end?esc(fmtDate(n.apply_end)):nullCell(n,"apply_end"))}
       ${fieldRow(n,"apply_end_time")}
@@ -704,7 +1054,8 @@ function renderDetail(){
 
     <div><h3 class="sec">링크</h3><div class="links">
       ${srcLinks}
-      ${typedLinks(n)}
+      ${editedField(n,"official_url")?`<div class="link-row"><span class="lk">주최기관 공식 <span class="tag t-mine">내 수정</span></span>${n.official_url?linkHTML(n.official_url):`<span class="null">빈 값으로 수정함</span>`}<span class="note">원문: ${n._orig.official_url?esc(n._orig.official_url):"미기재"} · 아래는 출처가 준 원래 링크</span></div>`:""}
+      ${typedLinks(n._orig || n)}
       <div class="link-row"><span class="lk">첨부 공고문</span>${linkHTML(n.attachment_url)}</div>
     </div></div>
 
@@ -719,6 +1070,212 @@ function renderDetail(){
       <ul class="timeline">${hist || `<li class="null">기록 없음</li>`}</ul>
     </div>
   </div>`;
+}
+
+
+/* ------------------------- 렌더: 내 수정본 상자 ------------------------- */
+function origText(k, v){
+  if (v == null || v === "") return k === "apply_status_override" ? "지정 없음(날짜로 자동 계산)" : "미기재(빈 값)";
+  return EF[k].type === "date" ? fmtDate(v) : String(v);
+}
+function cutText(s, max){ s = String(s); return s.length > max ? s.slice(0, max) + `…(${s.length}자)` : s; }
+function fieldStateText(k, f, o){
+  if (!f.on) return "원문 유지(수정 없음)";
+  const v = fromInput(k, f.value);
+  if (v === null) return k === "apply_status_override" ? "수정: 자동 계산(상태 지정 해제)" : "수정: 빈 값 — 저장하면 원문 값 대신 빈 값이 표시됩니다";
+  return sameVal(v, o[k]) ? "수정: 원문과 같은 값" : "수정값 저장 예정";
+}
+function efInput(k, f){
+  const t = EF[k].type, dis = f.on ? "" : " disabled", a = `data-in="${k}" id="ef_${k}" aria-label="${esc(EF[k].label)} 수정값"`;
+  if (t === "area") return `<textarea ${a}${dis}>${esc(f.value)}</textarea>`;
+  if (t === "date") return `<input type="date" ${a} value="${esc(f.value)}"${dis}>`;
+  if (t === "url") return `<input type="url" inputmode="url" placeholder="https://" ${a} value="${esc(f.value)}"${dis}>`;
+  if (t === "status") return `<select ${a}${dis}><option value="">자동 계산(상태 지정 해제)</option>${STATUSES.map(s => `<option value="${esc(s)}"${s===f.value?" selected":""}>${esc(s)}</option>`).join("")}</select>`;
+  return `<input type="text" ${a} value="${esc(f.value)}"${dis}>`;
+}
+function draftPreview(d, o){
+  const fields = draftFields(d);
+  const p = applyFields(o, fields);
+  const msgs = [];
+  const errs = validateFields(fields, o);
+  errs.forEach(e => msgs.push(`<div class="alert bad"><b>저장할 수 없음</b>${esc(e)}</div>`));
+  const c = overrideConflict(Object.assign(p, { _edit:{ fields } }));
+  if (c) msgs.push(`<div class="alert warn"><b>날짜와 신청 상태 지정이 충돌합니다</b>${esc(conflictText(c, true))}</div>`);
+  if (("apply_start" in fields || "apply_end" in fields) && !p.apply_start && !p.apply_end && (o.apply_start || o.apply_end))
+    msgs.push(`<div class="alert info"><b>신청 날짜를 모두 비움</b>저장하면 원문 날짜는 다시 나타나지 않고, 신청 상태는 날짜 없이 계산됩니다(기간 유형 ‘${esc(p.period_kind||"미분류")}’).</div>`);
+  if (!errs.length){
+    let st; try { st = applyStatus(p); } catch(e){ st = "계산 불가"; }
+    msgs.push(`<div class="note">저장 후 신청 상태: <b>${esc(st)}</b>${CLOSED_STATES.has(st)?" — 기본 목록에서는 마감·종료로 숨겨집니다":""} · 기간 유형: ${esc(p.period_kind||"미분류")}</div>`);
+  }
+  return msgs.join("");
+}
+function editFormHTML(n, d){
+  const o = n._orig || n;
+  const latest = EDITS.edits[d.key] || null;
+  const changedElsewhere = (latest ? (latest.rev|0) : 0) !== d.baseRev || (latest ? latest.saved_at || null : null) !== d.baseSaved;
+  const alerts = [];
+  if (d.error){
+    if (d.error.kind === "write" || d.error.kind === "read")
+      alerts.push(`<div class="alert bad" role="alert"><b>저장하지 못했습니다 — 저장 완료가 아닙니다</b>${d.error.msgs.map(esc).join("<br>")}
+        <span>입력 내용은 이 화면에 그대로 있습니다. 새로고침하거나 브라우저를 닫으면 사라지므로, 먼저 아래 ‘입력 포함 백업 내려받기’로 파일을 받아 두세요. 개인정보 보호(시크릿) 모드나 저장 공간 부족이면 일반 창에서 백업 파일을 ‘백업 가져오기’로 다시 넣을 수 있습니다.</span>
+        <span class="edit-actions"><button class="btn" type="button" data-act="backup-draft">입력 포함 백업 내려받기</button><button class="btn" type="button" data-act="save">다시 저장</button></span></div>`);
+    else alerts.push(`<div class="alert bad" role="alert"><b>입력값을 확인해 주세요 — 저장하지 않았습니다</b>${d.error.msgs.map(esc).join("<br>")}</div>`);
+  }
+  if (d.conflict){
+    const c = d.conflict.cur;
+    const desc = c ? `다른 탭(또는 창)에서 ${esc(fmtTime(c.saved_at)||"알 수 없는 시각")}에 저장한 수정본이 있습니다(수정 항목: ${esc(Object.keys(c.fields||{}).map(k=>EF[k]?EF[k].label:k).join(", ")||"없음")}${c.note?" · 메모 있음":""}).`
+                   : "다른 탭(또는 창)에서 이 공고의 수정본을 원문으로 복원(삭제)했습니다.";
+    alerts.push(`<div class="alert bad" role="alert"><b>다른 탭의 최신 수정본과 충돌 — 저장하지 않았습니다</b>${desc}<span>지금 입력은 화면에 그대로 있습니다. 둘 중 하나를 고르세요.</span>
+      <span class="edit-actions"><button class="btn" type="button" data-act="conflict-load">최신 수정본 불러오기(내 입력 버림)</button><button class="btn" type="button" data-act="conflict-force">내 입력으로 덮어쓰기</button><button class="btn ghost" type="button" data-act="backup-draft">입력 포함 백업 내려받기</button></span></div>`);
+  } else if (changedElsewhere){
+    alerts.push(`<div class="alert warn"><b>다른 탭에서 이 공고 수정본이 바뀌었습니다</b>저장하면 충돌 확인 후 선택하도록 안내합니다.</div>`);
+  }
+  const rows = EDIT_FIELDS.map(([k, label, t]) => {
+    const f = d.fields[k];
+    const help = t === "date" ? `<div class="note">비우고 저장하면 ‘날짜 없음’으로 저장되어 원문 날짜가 다시 나타나지 않습니다. 원문 날짜로 돌아가려면 ‘원문으로 복원’을 누르세요.</div>`
+               : t === "status" ? `<div class="note">지정하면 날짜보다 우선합니다. 날짜로 자동 계산하려면 ‘자동 계산(상태 지정 해제)’을 고르세요.</div>`
+               : t === "url" ? `<div class="note">http:// 또는 https:// 주소만 저장합니다.</div>` : "";
+    return `<div class="ef" data-f="${k}">
+      <div class="ef-head"><label for="ef_${k}"><b>${esc(label)}</b></label>
+        <span class="edit-actions"><label class="chk"><input type="checkbox" data-act="toggle" data-f="${k}"${f.on?" checked":""}> 이 항목 수정</label>
+        <button class="btn ghost" type="button" data-act="restore-field" data-f="${k}"${f.on?"":" hidden"}>원문으로 복원</button></span></div>
+      ${efInput(k, f)}
+      <div class="ef-orig">원문: ${esc(cutText(origText(k, o[k]), 400))}</div>
+      <div class="note ef-state">${esc(fieldStateText(k, f, o))}</div>${help}
+    </div>`;
+  }).join("");
+  return `${alerts.join("")}
+    <div class="note">‘이 항목 수정’을 켠 항목만 저장됩니다. 끈 항목은 원문을 그대로 표시합니다. 내용을 수정해도 검토 상태(미검토·검토완료·제외)는 바뀌지 않습니다.</div>
+    ${rows}
+    <div class="ef"><label for="ef_note"><b>검토 메모</b> <span class="note">(이 브라우저 전용 · CSV에는 선택할 때만 포함)</span></label>
+      <textarea data-in="__note" id="ef_note">${esc(d.note)}</textarea></div>
+    <div id="efWarn">${draftPreview(d, o)}</div>
+    <div class="edit-actions">
+      <button class="btn primary" type="button" data-act="save">이 브라우저에 저장</button>
+      <button class="btn" type="button" data-act="cancel">취소</button>
+      <button class="btn ghost" type="button" data-act="restore-all">모든 항목 원문으로</button>
+    </div>`;
+}
+function editBoxHTML(n){
+  if (!editsActive()) return `<div class="edit-box"><div class="ef-head"><h3>내 수정본</h3></div><div class="note">샘플·불러온 비수집 데이터에는 내 수정본을 적용하지 않습니다.</div></div>`;
+  const o = n._orig || n, rec = n._edit || null, d = drafts[n.id];
+  const head = `<div class="ef-head"><h3>내 수정본 <span class="tag t-mine">이 브라우저 전용</span></h3>${!d && !EDITS_ERROR ? `<button class="btn" type="button" data-act="edit-open">${rec ? "수정본 편집" : "이 공고 수정하기"}</button>` : ""}</div>
+    <div class="note">${esc(LOCAL_NOTICE)}</div>`;
+  if (EDITS_ERROR) return `<div class="edit-box">${head}<div class="alert bad"><b>저장된 수정본을 읽지 못해 편집을 멈췄습니다</b>${esc(EDITS_ERROR)}. 기존 기록을 덮어쓰지 않도록 저장하지 않습니다. 상단 ‘내 수정본 백업·가져오기’에서 원래 내용을 백업하세요.</div></div>`;
+  if (d) return `<div class="edit-box" id="editBox">${head}${editFormHTML(n, d)}</div>`;
+  const parts = [];
+  if (rec){
+    const ks = Object.keys(rec.fields||{});
+    if (ks.length) parts.push(`<div>수정한 항목 ${ks.length}개: ${ks.map(k => `${esc(EF[k]?EF[k].label:k)}${rec.fields[k]===null?(k==="apply_status_override"?"(자동 계산으로 지정)":"(빈 값으로 수정)"):""}`).join(", ")}</div>`);
+    else parts.push(`<div>수정한 항목 없음(메모만 저장)</div>`);
+    parts.push(`<div class="note">${esc(fmtTime(rec.saved_at)||"")}에 이 브라우저에 저장 · 버전 ${esc(rec.rev)}${rec.imported_at?` · 백업에서 가져옴(${esc(fmtTime(rec.imported_at))})`:""}</div>`);
+    if (rec.note) parts.push(`<div class="quote">${esc(rec.note)}</div>`);
+    if (ks.length){
+      const dr = editDrift(o, rec);
+      const fl = dr.fieldsChanged.map(k => EF[k].label).join(", ");
+      if (dr.digest === "changed") parts.push(`<div class="alert warn"><b>수정한 뒤 수집 원문이 바뀌었습니다</b>원문 요약값이 저장 당시와 다릅니다(조회수·수집 시각·키워드 순서 변화는 제외하고 비교). ${fl?`내가 수정한 항목 중 원문 값이 바뀐 항목: ${esc(fl)}. `:""}원문과 내 수정값을 비교한 뒤 다시 저장하면 이 안내가 사라집니다.</div>`);
+      else if (dr.fieldsChanged.length) parts.push(`<div class="alert info"><b>원문 정리값이 바뀐 항목이 있습니다</b>원문 요약값은 같지만(공고 원문 변경 아님) 정리 규칙 변경 등으로 값이 달라졌습니다: ${esc(fl)}.</div>`);
+      else if (dr.digest === "unknown") parts.push(`<div class="note">원문 요약값이 없거나 계산 방식이 달라 원문 변경 여부는 판단할 수 없습니다. 수정한 항목의 원문 값은 저장 당시와 같습니다.</div>`);
+    }
+    const c = overrideConflict(n);
+    if (c) parts.push(`<div class="alert warn"><b>날짜와 신청 상태 지정이 충돌합니다</b>${esc(conflictText(c, false))}</div>`);
+  } else parts.push(`<div class="note">수정 없음 — 원문 그대로 표시 중입니다.</div>`);
+  return `<div class="edit-box">${head}${parts.join("")}</div>`;
+}
+function updateFormBits(id){
+  const d = drafts[id], box = $("editBox"); if (!d || !box) return;
+  const n = DATA.notices.find(x => x.id === id); if (!n) return;
+  const o = n._orig || n;
+  EDIT_KEYS.forEach(k => {
+    const el = box.querySelector(`.ef[data-f="${k}"]`); if (!el) return;
+    const f = d.fields[k];
+    const inp = el.querySelector("[data-in]"); inp.disabled = !f.on; if (inp.value !== f.value) inp.value = f.value;
+    el.querySelector('[data-act="toggle"]').checked = f.on;
+    el.querySelector('[data-act="restore-field"]').hidden = !f.on;
+    el.querySelector(".ef-state").textContent = fieldStateText(k, f, o);
+  });
+  const w = $("efWarn"); if (w) w.innerHTML = draftPreview(d, o);
+}
+function editAction(act, el){
+  const id = state.selected, n = DATA.notices.find(x => x.id === id); if (!n) return;
+  const o = n._orig || n;
+  if (act === "edit-open"){ startEdit(n); renderDetail(); const b = $("editBox"); if (b && b.scrollIntoView) b.scrollIntoView({ block:"start" }); return; }
+  const d = drafts[id]; if (!d) return;
+  if (act === "cancel"){ delete drafts[id]; renderList(); toast("수정을 취소했습니다(저장된 내용은 그대로)"); return; }
+  if (act === "save"){ saveDraft(id, false); return; }
+  if (act === "conflict-force"){ saveDraft(id, true); return; }
+  if (act === "conflict-load"){ delete drafts[id]; loadEdits(); rebuildNotices(); const m = DATA.notices.find(x => x.id === id); startEdit(m); render(); toast("다른 탭의 최신 수정본을 불러왔습니다"); return; }
+  if (act === "backup-draft"){ exportBackup(id); return; }
+  if (act === "restore-all"){ EDIT_KEYS.forEach(k => { d.fields[k] = { on:false, value: toInput(k, o[k]) }; }); d.dirty = true; updateFormBits(id); toast("모든 항목을 원문 유지로 바꿨습니다. 저장해야 반영됩니다"); return; }
+  const k = el && el.dataset.f; if (!k || !d.fields[k]) return;
+  if (act === "restore-field"){ d.fields[k] = { on:false, value: toInput(k, o[k]) }; d.dirty = true; updateFormBits(id); return; }
+  if (act === "toggle"){ d.fields[k].on = el.checked; if (!el.checked) d.fields[k].value = toInput(k, o[k]); d.dirty = true; updateFormBits(id); return; }
+}
+
+/* ------------------------- 내 수정본 백업·가져오기 창 ------------------------- */
+function openMine(){
+  const er = readEditStore(), rr = readReviews();
+  const edits = er.ok ? er.store.edits : {};
+  const keys = Object.keys(edits);
+  const rawKeys = new Set((DATA.raw||[]).map(editKeyOf));
+  const missing = editsActive() ? keys.filter(k => !rawKeys.has(k)) : [];
+  const memo = keys.filter(k => edits[k].note).length;
+  const revN = rr.ok ? Object.values(rr.data).reduce((a,m) => a + (m && typeof m === "object" ? Object.keys(m).length : 0), 0) : 0;
+  const root = $("modalRoot");
+  root.innerHTML = `<div class="modal-back" id="mb"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt">
+    <h2 id="mt">내 수정본 백업·가져오기</h2>
+    <div class="alert info"><b>개인용 브라우저 편집 기능</b>${esc(LOCAL_NOTICE)} 브라우저 데이터를 지우면 함께 사라지므로 백업 파일을 받아 두세요.</div>
+    ${er.ok ? "" : `<div class="alert bad"><b>저장된 수정본을 해석하지 못했습니다</b>${esc(er.error)}. 지우거나 덮어쓰지 않았습니다. 백업 파일에 원래 텍스트가 그대로 들어갑니다.</div>`}
+    ${rr.ok ? "" : `<div class="alert bad"><b>저장된 검토 상태를 해석하지 못했습니다</b>${esc(rr.error)}. 지우거나 덮어쓰지 않았습니다.</div>`}
+    <div>수정본 <b>${keys.length}</b>건(메모 포함 ${memo}건) · 검토 상태 기록 <b>${revN}</b>건</div>
+    ${missing.length ? `<div class="alert warn"><b>현재 데이터(latest.json)에 없는 공고의 수정본 ${missing.length}건</b>지우지 않고 보관합니다. 이 표시는 ‘이번 수집 API에서 미수신’과 다릅니다 — 현재 화면 파일에 해당 공고가 들어 있지 않다는 뜻입니다.
+      <ul style="margin:4px 0 0;padding-left:18px">${missing.slice(0,20).map(k => `<li>${esc(edits[k].title_hint||"(제목 기록 없음)")} <span class="mono null">${esc(k)}</span> · ${esc(fmtTime(edits[k].saved_at)||"")}</li>`).join("")}</ul>${missing.length>20?`<span class="note">외 ${missing.length-20}건</span>`:""}</div>` : ""}
+    ${editsActive() ? "" : `<div class="note">지금 화면은 수집 결과가 아니어서 수정본을 화면에 적용하지 않습니다. 백업·가져오기는 할 수 있습니다.</div>`}
+    <div class="edit-actions">
+      <button class="btn primary" id="btnBkExport" type="button">백업 파일 내려받기(JSON)</button>
+      <label class="btn" for="fileBackup">백업 파일 가져오기</label>
+    </div>
+    <div class="note">백업 파일에는 수정본·검토 메모·검토 상태가 모두 들어 있습니다. 개인 메모가 들어 있으니 저장소나 공개 장소에 올리지 마세요. 가져오기는 미리보기에서 고른 항목만 반영하며, 파일에 없는 기존 기록은 지우지 않습니다.</div>
+    <div id="mineFallback"></div>
+    <div id="impPreview"></div>
+    <div style="display:flex;justify-content:flex-end"><button class="btn" id="mClose" type="button">닫기</button></div>
+  </div></div>`;
+  $("mClose").onclick = () => { root.innerHTML = ""; };
+  $("mb").addEventListener("click", e => { if (e.target.id === "mb") root.innerHTML = ""; });
+  $("btnBkExport").onclick = () => exportBackup(null);
+}
+const IMP_LABEL = { new:"새로 추가", same:"같음(반영할 것 없음)", conflict:"충돌 — 현재 기록과 다름", invalid:"형식 오류 — 가져오지 않음" };
+function showImportPreview(parsed){
+  const host = $("impPreview"); if (!host) return;
+  const items = parsed.items;
+  if (!items.length){ host.innerHTML = `<div class="alert info"><b>가져올 항목이 없습니다</b>백업 파일에 수정본·검토 상태 기록이 없습니다.</div>`; return; }
+  const cnt = s => items.filter(i => i.state === s).length;
+  const desc = it => {
+    if (it.type === "edit"){
+      const f = it.rec ? Object.keys(it.rec.fields).map(k => EF[k].label + (it.rec.fields[k]===null?"(빈 값)":"")).join(", ") : "";
+      const cur = it.cur ? `<div class="note">현재: ${esc(Object.keys(it.cur.fields||{}).map(k=>EF[k]?EF[k].label:k).join(", ")||"수정 항목 없음")}${it.cur.note?" · 메모":""} · ${esc(fmtTime(it.cur.saved_at)||"")}</div>` : "";
+      return `${f?esc(f):""}${it.rec && it.rec.note?" · 메모":""}${it.rec?` · ${esc(fmtTime(it.rec.saved_at)||"")}`:""}${it.rec && it.rec.from_unsaved_input?" · 저장 못 한 입력":""}${cur}`;
+    }
+    return it.val ? `${esc(it.val.status)} · ${esc(fmtTime(it.val.at)||"")}${it.cur?`<div class="note">현재: ${esc(it.cur.status)} · ${esc(fmtTime(it.cur.at)||"")}</div>`:""}` : "";
+  };
+  host.innerHTML = `<div class="alert info"><b>가져오기 미리보기 — 아직 저장하지 않았습니다</b>새로 추가 ${cnt("new")} · 같음 ${cnt("same")} · 충돌 ${cnt("conflict")} · 형식 오류 ${cnt("invalid")}${parsed.exported_at?` · 백업 시각 ${esc(fmtTime(parsed.exported_at))}`:""}<span>충돌 항목은 기본으로 선택하지 않았습니다. 선택하면 현재 기록을 백업 내용으로 바꿉니다(반영 전에 현재 기록을 백업해 두는 것을 권합니다).</span></div>
+    <div class="tbl-scroll"><table class="imp-tbl"><thead><tr><th>선택</th><th>종류</th><th>공고</th><th>판정</th><th>내용</th></tr></thead><tbody>
+    ${items.map((it, i) => `<tr><td><input type="checkbox" data-imp="${i}" aria-label="${i+1}번 항목 선택"${it.state==="new"?" checked":""}${it.state==="same"||it.state==="invalid"?" disabled":""}></td>
+      <td>${it.type==="edit"?"수정본·메모":"검토 상태"}</td>
+      <td>${esc(it.title||"(현재 데이터에서 찾지 못함)")}<div class="mono null">${esc(it.key)}</div>${it.missing?`<span class="tag t-warn">현재 데이터에 없음</span>`:""}</td>
+      <td>${esc(IMP_LABEL[it.state])}${it.reason?`<div class="note">${esc(it.reason)}</div>`:""}</td><td>${desc(it)}</td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="edit-actions"><button class="btn primary" id="btnImpApply" type="button">선택한 항목 반영</button><button class="btn" id="btnImpCancel" type="button">가져오기 취소</button></div>
+    <div id="impResult"></div>`;
+  $("btnImpCancel").onclick = () => { host.innerHTML = ""; toast("가져오기를 취소했습니다(아무것도 바꾸지 않음)"); };
+  $("btnImpApply").onclick = () => {
+    const chosen = [...host.querySelectorAll("[data-imp]:checked")].map(c => items[+c.dataset.imp]).filter(it => it.state === "new" || it.state === "conflict");
+    if (!chosen.length){ $("impResult").innerHTML = `<div class="alert warn"><b>선택한 항목이 없습니다</b>아무것도 바꾸지 않았습니다.</div>`; return; }
+    const r = applyImport(chosen);
+    afterStorageChange();
+    if (r.ok){ host.innerHTML = `<div class="alert info" role="status"><b>가져오기 완료</b>수정본 ${r.ne}건 · 검토 상태 ${r.nr}건을 이 브라우저에 저장했습니다(저장 후 다시 읽어 확인함).</div>`; toast(`가져오기 완료: 수정본 ${r.ne}건 · 검토 상태 ${r.nr}건`, 3600); }
+    else $("impResult").innerHTML = `<div class="alert bad" role="alert"><b>${r.partial?"일부만 반영됨":"가져오기 실패 — 반영 안 됨"}</b>${esc(r.msg)}</div>`;
+  };
 }
 
 /* ------------------------- 렌더: 출처 상태 ------------------------- */
@@ -872,12 +1429,29 @@ $("list").addEventListener("keydown", e => { if ((e.key==="Enter"||e.key===" ") 
 $("detail").addEventListener("click", e => {
   const seg = e.target.closest(".seg button");
   if (seg){
-    const k = scopeKey(); reviewOverrides[k] = reviewOverrides[k] || {};
-    reviewOverrides[k][state.selected] = { status: seg.dataset.v, at: new Date(Date.now()+9*3600000).toISOString().replace("Z","+09:00") };
-    saveOverrides(); renderTabs(); renderList(); toast(`검토 상태를 ‘${seg.dataset.v}’(으)로 바꿨습니다`); return;
+    // 기존 구조 { 범위: { 공고ID: {status, at} } } 그대로. 저장 직전 다시 읽어 다른 탭의 기록을 지우지 않고, 쓰기를 확인한 뒤에만 반영
+    const rr = readReviews();
+    if (!rr.ok){ toast(`검토 상태를 저장하지 못했습니다: ${rr.error}. 기존 기록을 덮어쓰지 않았습니다`, 5000); return; }
+    const data = rr.data, k = scopeKey(); data[k] = data[k] || {};
+    data[k][state.selected] = { status: seg.dataset.v, at: new Date(Date.now()+9*3600000).toISOString().replace("Z","+09:00") };
+    const w = writeKey(LS_KEY, JSON.stringify(data));
+    if (!w.ok){ toast(`검토 상태를 저장하지 못했습니다(${w.error}). 화면도 바꾸지 않았습니다. ‘내 수정본 백업·가져오기’에서 백업할 수 있습니다`, 6000); return; }
+    reviewOverrides = data;
+    renderTabs(); renderList(); toast(`검토 상태를 ‘${seg.dataset.v}’(으)로 바꿨습니다`); return;
   }
+  const act = e.target.closest("[data-act]");
+  if (act && act.dataset.act !== "toggle"){ editAction(act.dataset.act, act); return; }
   const go = e.target.closest("[data-goto]"); if (go){ select(go.dataset.goto); return; }
   if (e.target.closest("#btnBack")){ closeDetail(); }
+});
+$("detail").addEventListener("change", e => { const t = e.target.closest('[data-act="toggle"]'); if (t) editAction("toggle", t); });
+$("detail").addEventListener("input", e => {
+  const el = e.target.closest("[data-in]"); if (!el) return;
+  const d = drafts[state.selected]; if (!d) return;
+  if (el.dataset.in === "__note") d.note = el.value; else if (d.fields[el.dataset.in]) d.fields[el.dataset.in].value = el.value;
+  d.dirty = true;
+  if (el.dataset.in !== "__note"){ const n = DATA.notices.find(x => x.id === state.selected); const s = el.closest(".ef") && el.closest(".ef").querySelector(".ef-state"); if (n && s) s.textContent = fieldStateText(el.dataset.in, d.fields[el.dataset.in], n._orig || n); }
+  const w = $("efWarn"); const n = DATA.notices.find(x => x.id === state.selected); if (w && n) w.innerHTML = draftPreview(d, n._orig || n);
 });
 window.addEventListener("resize", () => { if (state.view !== "sources") renderDetail(); });
 
@@ -889,11 +1463,25 @@ $("fileJson").addEventListener("change", async e => {
     if (!obj || !Array.isArray(obj.notices)) throw new Error("notices 배열이 없습니다");
     obj.meta = obj.meta || {}; obj.sources = Array.isArray(obj.sources) ? obj.sources : [];
     obj.notices = obj.notices.map(n => mk(n));
-    DATA = obj; TODAY = obj.meta.reference_date || new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+    DATA = obj; DATA.raw = obj.notices; rebuildNotices(); TODAY = obj.meta.reference_date || new Date(Date.now()+9*3600000).toISOString().slice(0,10);
     state.selected = null; render();
     toast(`${obj.notices.length}건을 불러왔습니다`);
   } catch(err){ toast("불러오지 못했습니다: " + err.message + " — 파일 구조를 ‘출처별 수집 상태’ 탭의 연결 안내와 비교하세요"); }
   e.target.value = "";
+});
+
+/* 내 수정본 백업 가져오기: 파일을 읽어 미리보기만 만든다(선택·확인 전에는 저장하지 않음) */
+$("btnMine").addEventListener("click", openMine);
+$("fileBackup").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  if (!$("impPreview")) openMine();
+  const host = $("impPreview");
+  if (f.size > 5 * 1024 * 1024){ host.innerHTML = `<div class="alert bad"><b>가져오지 않음</b>파일이 5MB보다 큽니다. 아무것도 바꾸지 않았습니다.</div>`; return; }
+  let obj;
+  try { obj = JSON.parse(await f.text()); } catch(err){ host.innerHTML = `<div class="alert bad"><b>가져오지 않음</b>JSON으로 읽을 수 없습니다(${esc(err.message)}). 아무것도 바꾸지 않았습니다.</div>`; return; }
+  const parsed = parseBackup(obj);
+  if (parsed.fatal){ host.innerHTML = `<div class="alert bad"><b>가져오지 않음</b>${esc(parsed.fatal)}. 아무것도 바꾸지 않았습니다.</div>`; return; }
+  showImportPreview(parsed);
 });
 
 /* ------------------------- CSV ------------------------- */
@@ -920,10 +1508,22 @@ const CSV_COLS = [
     return ["[추가] "+label, n => n.extra ? (n.extra[k] ?? null) : null];
   })
 ];
-function toCSV(rows){
+/* 기존 열은 수집 원문 값 그대로(원문 기준 신청 상태 포함), 뒤에 내 수정본(이 브라우저)을 반영한 열을 붙인다 */
+const EDIT_CSV_COLS = [
+  ...EDIT_FIELDS.map(([k,l]) => ["[수정 반영값] " + l, n => n[k]]),
+  ["[수정 반영값] 신청 상태", n => applyStatus(n)],
+  ["[수정 반영값] 신청기간 유형", n => n.period_kind],
+  ["내 수정 여부", n => isMine(n) ? "예" : "아니오"],
+  ["내 수정 항목", n => isMine(n) ? Object.keys(n._edit.fields).map(k => (EF[k]?EF[k].label:k) + (n._edit.fields[k]===null?"(빈 값)":"")).join(" | ") : null],
+  ["수정 시각", n => isMine(n) ? n._edit.saved_at : null]
+];
+const NOTE_CSV_COL = ["검토 메모(이 브라우저)", n => (n._edit && n._edit.note) || null];
+function toCSV(rows, withNote){
   const cell = v => { if (v===null||v===undefined) return ""; const s = String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; };
-  const head = CSV_COLS.map(c=>cell(c[0])).join(",");
-  const body = rows.map(n => CSV_COLS.map(([,k]) => cell(typeof k==="function" ? k(n) : n[k])).join(",")).join("\r\n");
+  const extra = withNote ? EDIT_CSV_COLS.concat([NOTE_CSV_COL]) : EDIT_CSV_COLS;
+  const get = (k, n) => typeof k==="function" ? k(n) : n[k];
+  const head = CSV_COLS.concat(extra).map(c=>cell(c[0])).join(",");
+  const body = rows.map(n => CSV_COLS.map(([,k]) => cell(get(k, n._orig || n))).concat(extra.map(([,k]) => cell(get(k, n)))).join(",")).join("\r\n");
   return "﻿" + head + "\r\n" + body + "\r\n";
 }
 function openExport(){
@@ -940,6 +1540,8 @@ function openExport(){
   root.innerHTML = `<div class="modal-back" id="mb"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt">
     <h2 id="mt">CSV 내보내기</h2>
     ${DATA.meta.mode==="sample"?`<div class="alert info"><b>샘플 데이터 CSV</b>파일 이름에 SAMPLE이 붙고, 모든 행의 ‘데이터 구분’ 열이 ‘샘플(가상)’로 기록됩니다.</div>`:""}
+    <div class="note">기존 열은 수집 원문 값 그대로이고, ‘[수정 반영값]’ 열에 내 수정본(이 브라우저)을 반영한 값과 내 수정 여부·수정 시각이 붙습니다.</div>
+    <label class="chk" for="csvNote"><input type="checkbox" id="csvNote"> 검토 메모 포함(개인 메모가 파일에 들어갑니다)</label>
     <div class="exp-opts">${opts.map(([k,l,rows])=>`<button class="exp-opt" data-k="${k}" type="button"${rows.length?"":" disabled"}><b>${l}</b><span>${rows.length}건 · 엑셀에서 한글이 깨지지 않도록 UTF-8 BOM 포함</span></button>`).join("")}</div>
     <div id="fallback"></div>
     <div style="display:flex;justify-content:flex-end"><button class="btn" id="mClose" type="button">닫기</button></div>
@@ -949,7 +1551,7 @@ function openExport(){
   $("mb").addEventListener("click", e => { if (e.target.id === "mb") close(); });
   root.querySelectorAll(".exp-opt").forEach(b => b.onclick = async () => {
     const [, label, rows, filename] = opts.find(o=>o[0]===b.dataset.k);
-    const csv = toCSV(rows);
+    const csv = toCSV(rows, $("csvNote").checked);
     let saved = false;
     try {
       const dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
@@ -978,11 +1580,13 @@ async function load(){
     if (!wantSample && obj.meta && obj.meta.mode !== "collected") throw new Error("data/latest.json 의 meta.mode 가 collected 가 아니어서 표시하지 않습니다.");
     if (wantSample && (!obj.meta || obj.meta.mode !== "sample")) throw new Error("샘플 파일 형식이 아닙니다.");
     obj.notices = obj.notices.map(n => mk(n));
-    DATA = obj; LOAD_ERROR = null;
+    DATA = obj; DATA.raw = obj.notices; LOAD_ERROR = null;
   } catch(err){
     DATA = EMPTY; LOAD_ERROR = (wantSample ? "샘플 파일을 읽지 못했습니다: " : "") + err.message;
   }
   TODAY = DATA.meta.reference_date;
+  loadEdits(); { const rr = readReviews(); if (rr.ok) reviewOverrides = rr.data; }
+  if (DATA !== EMPTY) rebuildNotices();
   syncFromUrl();
   render();
   if (DATA.meta.mode === "empty") $("list").innerHTML = `<li class="empty">${esc(LOAD_ERROR||"표시할 공고가 없습니다.")}<br><a href="#sample">샘플 화면 보기</a></li>`;
